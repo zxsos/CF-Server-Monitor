@@ -1,0 +1,43 @@
+name: Sync from upstream
+
+# 定时从上游主线拉取更新，自动合并到 main。
+# 本仓库是「上游镜像 + 本地部署配置」，合并会保留本仓库已有的本地改动。
+# 若出现冲突，工作流会失败并提示，需要手动解决。
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # UTC 04:00 = 北京时间 12:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge upstream
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/huilang-me/CF-Server-Monitor.git
+          git fetch upstream --tags --prune
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "已是最新，无需同步。"
+            exit 0
+          fi
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::合并上游时发生冲突，请手动解决后再推送。"
+            exit 1
+          fi
+          git push origin HEAD:main

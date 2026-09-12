@@ -4,6 +4,9 @@ main = "src/index.js"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# 仅通过优选域名 monitor.zxsos.ccwu.cc 访问，关闭 workers.dev 子域
+workers_dev = false
+
 keep_vars = true
 
 # 定时任务配置（UTC）
