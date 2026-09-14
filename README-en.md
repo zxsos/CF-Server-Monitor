@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.5%20Beta5-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.5%20Stable-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -99,7 +99,7 @@ Core flow:
 
 Recent changes:
 
-- `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes. Ping/loss fields now follow one rule: `false` or a missing field means not configured / not reported / not sampled (frontend hides it), while `null` means the probe timed out / no valid RTT was obtained (frontend shows Timeout).
+- `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes.
 - `2.8.4`: Added Agent WSS reporting and active hours. Agents use POST outside selected hours to reduce Do duration, and this requires Agent `v1.0.10+`. Also added account Do usage display with optimized Do broadcast requests when no frontend subscription exists to reduce idle quota consumption, added custom Webhook channel in notification settings, and added frontend WSS timeout configuration.
 - `2.8.3`: Added disk IO metrics, switched the default Agent to Go, and added realtime latency / packet-loss windows.
 - `2.8.2`: Added Go Agent support.

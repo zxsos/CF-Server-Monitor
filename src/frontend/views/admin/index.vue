@@ -81,22 +81,27 @@
             class="tab-btn"
             :class="{ active: activeTab === 'servers' }"
             @click="activeTab = 'servers'"
-          >▸ {{ trans.servers }}</button>
+          >{{ trans.servers }}</button>
           <button
             class="tab-btn"
             :class="{ active: activeTab === 'settings' }"
             @click="activeTab = 'settings'"
-          >▸ {{ trans.settings }}</button>
+          >{{ trans.settings }}</button>
           <button
             class="tab-btn"
             :class="{ active: activeTab === 'database' }"
             @click="activeTab = 'database'"
-          >▸ {{ trans.dbManagement }}</button>
+          >{{ trans.dbManagement }}</button>
           <button
             class="tab-btn"
             :class="{ active: activeTab === 'themeStore' }"
             @click="activeTab = 'themeStore'"
-          >▸ {{ trans.themeStore }}</button>
+          >{{ trans.themeStore }}</button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'donation' }"
+            @click="activeTab = 'donation'"
+          >{{ trans.donation }}</button>
         </div>
 
         <ServerTable
@@ -168,6 +173,11 @@
           @theme-applied="settings.theme_url = $event"
           @theme-options-applied="handleThemeOptionsApplied"
           @alert-message="alertMessage = $event"
+        />
+
+        <DonationPanel
+          :trans="trans"
+          :active-tab="activeTab"
         />
       </div>
 
@@ -571,6 +581,7 @@ import ServerTable from './components/ServerTable.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import DatabasePanel from './components/DatabasePanel.vue'
 import ThemeStorePanel from './components/ThemeStorePanel.vue'
+import DonationPanel from './components/DonationPanel.vue'
 import EditServerModal from './components/EditServerModal.vue'
 import BatchEditServersModal from './components/BatchEditServersModal.vue'
 import DeleteServerModal from './components/DeleteServerModal.vue'
