@@ -1,5 +1,5 @@
 import { initDatabase, weeklyCleanup, getMetricsHistory, clearHistory } from './database/schema.js';
-import { checkOfflineNodes, checkExpiringServers, checkResourceAlerts } from './services/notification.js';
+import { checkOfflineNodes, checkExpiringServers, checkResourceAlerts, checkTrafficReports } from './services/notification.js';
 import { updateDatabase } from './database/updateDatabase.js';
 import { handleAdminAPI } from './handlers/admin.js';
 import { serveFrontend } from './handlers/frontend.js';
@@ -465,6 +465,8 @@ export default {
     const minute = now.getUTCMinutes();
     
     if (cron === '*/1 * * * *') {
+      // Traffic reports must still run during the Sunday table-rotation window.
+      await checkTrafficReports(env.DB, { scheduled: true, staggered: true, now: now.getTime() });
       if (day === 0 && hour === 0 && minute < 5) {
         debug('[Cron] 每周日0:00-0:05表轮换期间，跳过离线节点检测');
       } else {

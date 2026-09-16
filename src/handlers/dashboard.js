@@ -60,6 +60,7 @@ function withoutPrivateServerFields(server) {
   delete item.bandwidth;
   delete item.note;
   delete item.auto_update;
+  delete item.traffic_snapshots;
   return normalizePublicIpFields(item);
 }
 

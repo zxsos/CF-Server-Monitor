@@ -943,6 +943,7 @@ const settings = ref({
   tg_chat_id: '',
   notification_timezone: 'UTC',
   expire_notification_time: '12',
+  traffic_report_enabled: false,
   notification_webhook_enabled: false,
   notification_webhook_url: '',
   notification_webhook_method: 'POST',
@@ -1392,6 +1393,7 @@ const loadSettings = async () => {
         tg_chat_id: settingsData.tg_chat_id || '',
         notification_timezone: normalizeNotificationTimezoneSetting(settingsData.notification_timezone),
         expire_notification_time: normalizeExpireNotificationTimeSetting(settingsData.expire_notification_time),
+        traffic_report_enabled: settingsData.traffic_report_enabled === 'true' || settingsData.traffic_report_enabled === true,
         notification_webhook_enabled: settingsData.notification_webhook_enabled === 'true' || settingsData.notification_webhook_enabled === true,
         notification_webhook_url: settingsData.notification_webhook_url || '',
         notification_webhook_method: String(settingsData.notification_webhook_method || 'POST').toUpperCase() === 'GET' ? 'GET' : 'POST',
@@ -1506,7 +1508,8 @@ const saveSettings = async () => {
     }
   }
 
-  if (isTgNotifyEnabled(settings.value.tg_notify) || isExpireReminderEnabled(settings.value.expire_reminder) || isResourceAlertEnabled(settings.value.resource_alert_rules)) {
+  const isTrafficReportEnabled = settings.value.traffic_report_enabled
+  if (isTgNotifyEnabled(settings.value.tg_notify) || isExpireReminderEnabled(settings.value.expire_reminder) || isResourceAlertEnabled(settings.value.resource_alert_rules) || isTrafficReportEnabled) {
     if (isNotificationWebhookEnabled()) {
       if (!settings.value.notification_webhook_url || settings.value.notification_webhook_url.trim().length === 0) {
         validationError.value = trans.value.notificationWebhookUrlRequired || 'Webhook URL is required'
@@ -1572,6 +1575,7 @@ const saveSettings = async () => {
       tg_chat_id: settings.value.tg_chat_id,
       notification_timezone: normalizeNotificationTimezoneSetting(settings.value.notification_timezone),
       expire_notification_time: normalizeExpireNotificationTimeSetting(settings.value.expire_notification_time),
+      traffic_report_enabled: settings.value.traffic_report_enabled ? 'true' : 'false',
       notification_webhook_enabled: settings.value.notification_webhook_enabled ? 'true' : 'false',
       notification_webhook_url: settings.value.notification_webhook_url,
       notification_webhook_method: settings.value.notification_webhook_method === 'GET' ? 'GET' : 'POST',

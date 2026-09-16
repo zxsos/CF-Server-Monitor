@@ -281,6 +281,19 @@
 
           <div class="form-group flex-1">
             <label class="form-label">
+              {{ trans.trafficReport || 'Traffic reports' }}
+              <HelpTooltip
+                :text="`⚠️ ${trans.trafficReportRestartWarning || 'Traffic uses network-interface counters. A server or Agent restart may reset them and make the current report period inaccurate.'}`"
+              />
+            </label>
+            <select v-model="settings.traffic_report_enabled" class="form-select">
+              <option :value="false">{{ trans.disabled || 'Disabled' }}</option>
+              <option :value="true">{{ trans.enabled || 'Enabled' }}</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label class="form-label">
               {{ trans.expireNotificationTime || 'Expiration Notification Time' }}
               <HelpTooltip :text="trans.expireNotificationTimeTip || 'Check expiration and send reminders daily at this hour in the notification timezone. Use 0-23.'" />
             </label>

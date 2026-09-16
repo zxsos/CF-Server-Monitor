@@ -787,7 +787,12 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
         ? normalizeResourceAlertRules(settings.resource_alert_rules)
         : currentResourceAlertRules;
       const resourceAlertEnabled = normalizedResourceAlertRules.length > 0;
-      if (tgNotify !== '0' || expireReminder !== '0' || resourceAlertEnabled) {
+      const trafficReportEnabled = normalizeBooleanSetting(
+        settings.traffic_report_enabled !== undefined
+          ? settings.traffic_report_enabled
+          : sys?.traffic_report_enabled
+      ) === 'true';
+      if (tgNotify !== '0' || expireReminder !== '0' || resourceAlertEnabled || trafficReportEnabled) {
         const webhookEnabled = settings.notification_webhook_enabled !== undefined
           ? normalizeBooleanSetting(settings.notification_webhook_enabled) === 'true'
           : normalizeBooleanSetting(sys?.notification_webhook_enabled) === 'true';
@@ -881,6 +886,8 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
             siteOptions[field] = normalizeNotificationTimezone(settings[field]);
           } else if (field === 'expire_notification_time') {
             siteOptions[field] = normalizeExpireNotificationTime(settings[field]);
+          } else if (field === 'traffic_report_enabled') {
+            siteOptions[field] = normalizeBooleanSetting(settings[field]);
           } else if (field === 'notification_webhook_enabled') {
             siteOptions[field] = normalizeBooleanSetting(settings[field]);
           } else if (field === 'notification_webhook_method') {

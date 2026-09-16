@@ -10,7 +10,7 @@
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.5%20Stable-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta1-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#许可证)
@@ -69,7 +69,7 @@ CF-Server-Monitor 是一个部署在 Cloudflare Workers 上的服务器监控系
 | 管理后台      | 服务器增删改查、拖拽排序、隐藏服务器、导入导出、批量删除、数据库维护                                               |
 | 多系统 Agent | 主流 Linux、Alpine Linux、OpenWrt、群晖 DSM、飞牛 fnOS、FreeBSD、macOS、Windows；默认 Go 版本，保留 Shell/PowerShell 版本 |
 | 实时推送      | Durable Objects + WebSocket，Agent 上报后前端即时刷新                                      |
-| 告警通知      | 离线告警、恢复通知、到期提醒、资源负载告警                                                            |
+| 告警通知      | 离线告警、恢复通知、到期提醒、资源负载告警、每日/每周/每月流量报告                                           |
 | 多语言       | 前端内置中文和英文切换；文档提供中文与英文入口                                                          |
 | 多站点       | 支持 GitHub Pages 静态前台和多个 Worker API 聚合展示                                          |
 | 小组件       | 提供 iOS Scriptable 小组件脚本，适合移动端快速查看                                                |
@@ -97,6 +97,7 @@ flowchart LR
 
 近期变化：
 
+- `2.8.6`：新增流量报告功能。
 - `2.8.5`：支持自定义 Ping 节点名称；增加ICMP模式；优化WSS响应逻辑；API接口优化；原皮前端优化；新增4个ping节点。
 - `2.8.4`：新增 Agent WSS 上报和 WSS 开启时段，提升实时数据推送及时性，并允许非目标时段自动改用 POST 降低 Do 时长消耗；该能力要求 Agent 升级到 `v1.0.10+`。新增账户Do用量展示，优化无前端订阅时的 Do 实时广播请求，降低空闲额度消耗。通知设置新增自定义 Webhook 渠道, 新增前端wss超时配置。
 - `2.8.3`：新增磁盘 IO 统计，默认 Agent 切换为 Go 版本，新增服务器延迟与丢包率实时窗口。
@@ -261,7 +262,7 @@ npm run build:github-page
 | 站点设置          | 标题、背景、favicon、默认展示模式、默认外观、默认语言、三网详情、公开访问策略 |
 | 服务器参数         | HTTP/WSS 上报间隔、采集间隔、Ping 节点、网卡、月流量、价格、到期时间、自动续费 |
 | 安全设置          | 管理员账号密码、JWT Secret、Turnstile          |
-| 通知设置          | 离线告警、到期提醒、资源负载告警、测试通知                 |
+| 通知设置          | 离线告警、到期提醒、资源负载告警、流量报告、测试通知            |
 | 外观设置          | 自定义 CSS、`<head>`、CSP 白名单、Mikus 模式     |
 | 数据库管理         | 升级数据库、清空历史数据                          |
 | Cloudflare 用量 | 查询 D1 行读写和 Workers 请求量                |
@@ -346,6 +347,7 @@ npm run build:github-page
 - 离线告警：节点离线达到设定阈值后通知，恢复后发送恢复通知。
 - 到期提醒：服务器到期前 1 到 7 天内，按通知时区和到期通知时间每天提醒，也可关闭。
 - 资源负载告警：按 CPU、内存、磁盘、上下行速率等指标配置规则。
+- 流量报告：开启后按通知时区维护日、周、月三个 JSON 网卡流量基线；日报每天发送，周报在周一发送，月报在每月 1 日发送。没有上一周期基线时，通知会显示暂无数据。服务器或 Agent 重启可能使网卡计数归零并影响当前周期统计。
 
 配置后请先点击发送测试通知，再保存配置。
 
@@ -466,7 +468,7 @@ Go 版本和旧 Shell / PowerShell 版本卸载脚本只清理各自安装的服
 | Cron          | 说明                         |
 | ------------- | -------------------------- |
 | `*/1 * * * *` | 每分钟检测离线节点、资源告警 |
-| `0 * * * *`   | 每小时执行合并任务，包括月表轮换、旧表清理，并按通知时区/到期通知小时执行到期检测 |
+| `0 * * * *`   | 每小时执行合并任务，包括月表轮换、旧表清理，并按通知时区执行到期检测和流量报告 |
 
 ## 本地开发
 
@@ -518,6 +520,16 @@ wrangler d1 execute server-monitor-db --file=test/mock-data.sql
 ```
 
 更多本地测试说明见 [test/README.md](test/README.md)。
+
+### 定时任务
+
+```
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=*/1+*+*+*+* // 每分钟执行一次（离线检测）
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+* // 每小时执行一次（合并任务）
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+0+*+*+0 // 每周执行一次（测试使用）
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+12+*+*+* // 每天12点执行一次（测试使用）
+```
+
 
 ### API 检查
 

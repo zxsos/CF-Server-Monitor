@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.5%20Stable-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta1-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -69,7 +69,7 @@ Compared with traditional controller-style monitoring tools, CF-Server-Monitor i
 | Admin panel | Server CRUD, drag sorting, hidden servers, import/export, batch delete, database maintenance |
 | Cross-platform Agent | Mainstream Linux, Alpine Linux, OpenWrt, Synology DSM, Feiniu fnOS, FreeBSD, macOS, Windows; Go Agent by default, Shell/PowerShell still available |
 | Realtime push | Durable Objects + WebSocket refresh the UI immediately after Agent reports |
-| Alerts | Offline alerts, recovery notices, expiration reminders, resource load rules |
+| Alerts | Offline alerts, recovery notices, expiration reminders, resource load rules, daily/weekly/monthly traffic reports |
 | Multi-language | Built-in Chinese and English frontend switch; Chinese and English documentation |
 | Multi-site | GitHub Pages static frontend and aggregation of multiple Worker APIs |
 | Widget | iOS Scriptable widget script for quick mobile status checks |
@@ -99,6 +99,7 @@ Core flow:
 
 Recent changes:
 
+- `2.8.6`: Added traffic report feature.
 - `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes.
 - `2.8.4`: Added Agent WSS reporting and active hours. Agents use POST outside selected hours to reduce Do duration, and this requires Agent `v1.0.10+`. Also added account Do usage display with optimized Do broadcast requests when no frontend subscription exists to reduce idle quota consumption, added custom Webhook channel in notification settings, and added frontend WSS timeout configuration.
 - `2.8.3`: Added disk IO metrics, switched the default Agent to Go, and added realtime latency / packet-loss windows.
@@ -348,6 +349,7 @@ Supported alert types:
 - Offline alert: notify after a node stays offline for the configured delay; send recovery notice when it returns.
 - Expiration reminder: notify daily 1 to 7 days before expiration at the configured notification timezone and expiration notification time, or disable it.
 - Resource alert: define rules for CPU, memory, disk, inbound/outbound network speed, and similar metrics.
+- Traffic reports: when enabled, three lightweight JSON network-counter baselines are maintained in the notification timezone. Daily reports are sent every day, weekly reports on Monday, and monthly reports on the first day. A missing previous baseline is reported as unavailable. Server or Agent restarts may reset interface counters and affect the current period.
 
 Send a test notification before saving.
 
@@ -463,7 +465,7 @@ After upgrading from older versions to versions with GPU, disk IO, packet loss, 
 | Cron | Description |
 | --- | --- |
 | `*/1 * * * *` | Detect offline nodes/resource alerts every minute |
-| `0 * * * *` | Run hourly combined tasks, including monthly table rotation, old table cleanup, and expiration checks at the configured notification timezone/hour |
+| `0 * * * *` | Run hourly combined tasks, including monthly table rotation, old table cleanup, expiration checks, and traffic reports in the configured notification timezone |
 
 ## Local Development
 
@@ -515,6 +517,17 @@ wrangler d1 execute server-monitor-db --file=test/mock-data.sql
 ```
 
 See [test/README.md](test/README.md) for more local testing notes.
+
+### Cron Jobs
+
+```
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=*/1+*+*+*+* // Detect offline nodes/resource alerts every minute
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+* // Run hourly combined tasks
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+0+*+*+0 // Weekly maintenance tasks
+https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+12+*+*+* // Daily maintenance tasks (for testing)
+```
+
+
 
 ### API Check
 
