@@ -596,8 +596,8 @@ Headers: Upgrade: websocket, Connection: Upgrade
 
 | 订阅类型 | 推送方式 | 消息类型 | 说明 |
 | -------- | ----- | ----- | --- |
-| `subscribe=all` | 批量合并，每 5 秒一次 | `batchUpdate` | 减少消息数量，降低前端渲染压力 |
-| `subscribe=<serverId>` | 实时推送 | `batchUpdate` | 单台服务器详情页，低延迟，统一消息格式 |
+| `subscribe=all` | 批量合并 | `batchUpdate` | Agent WSS 上报按 250ms 窗口合并；HTTP 上报最长约 5 秒，减少消息数量和前端渲染压力 |
+| `subscribe=<serverId>` | 实时推送 | `batchUpdate` | 单台服务器更新不进入 250ms 合并窗口，保持最低延迟和统一消息格式 |
 
 **消息格式**：
 

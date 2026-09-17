@@ -1,5 +1,5 @@
 // 当前 Worker 版本：/api/config 返回给前端与主题，用于页脚和升级提示。
-export const CURRENT_VERSION = '2.8.6 Beta1';
+export const CURRENT_VERSION = '2.8.6 Beta2';
 
 // 站点设置默认值与缓存策略。
 export const DEFAULT_SITE_TITLE = 'Cloudflare Server Monitor';
@@ -27,6 +27,7 @@ export const UPDATE_MAX_BATCH_SAMPLES = 300;
 export const UPDATE_FRONTEND_SUBSCRIBER_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 // Agent WSS 上报策略：默认历史写入间隔、服务器配置缓存，以及无前端订阅时的最小上报间隔。
+export const AGENT_WSS_FRONTEND_BATCH_WINDOW_MS = 250;
 export const AGENT_DEFAULT_HISTORY_WRITE_INTERVAL_MS = 60 * 1000;
 export const AGENT_SERVER_DETAIL_TTL_MS = 120 * 1000;
 export const AGENT_MIN_IDLE_WSS_REPORT_INTERVAL_MS = 60 * 1000;

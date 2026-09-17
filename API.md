@@ -901,8 +901,8 @@ Sec-WebSocket-Version: 13
 
 | 订阅类型 | 推送方式 | 消息类型 | 说明 |
 | -------- | ----- | ----- | --- |
-| `subscribe=all` | 批量合并，每 5 秒一次 | `batchUpdate` | 减少消息数量，降低前端渲染压力 |
-| `subscribe=<serverId>` | 最长约 5 秒批量窗口 | `batchUpdate` | 单台服务器详情页仅过滤目标 ID，消息仍经统一合并队列 |
+| `subscribe=all` | 批量合并 | `batchUpdate` | Agent WSS 上报按 250ms 窗口合并；HTTP 上报最长约 5 秒，减少消息数量和前端渲染压力 |
+| `subscribe=<serverId>` | 实时推送 | `batchUpdate` | 单台服务器更新不进入 250ms 合并窗口，消息格式与全量订阅一致 |
 
 > `subscribe=all` 默认不推送任何服务器更新。客户端应先调用 `/api/servers` 获取当前可见服务器列表，再通过 WebSocket 通道发送 `subscribe` 消息，使用 `servers[].id` 作为过滤列表。
 

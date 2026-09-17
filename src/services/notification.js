@@ -1350,11 +1350,24 @@ export async function checkTrafficReports(db, options = {}) {
   if (options.staggered && zonedParts) {
     const baseMinute = 0;
     const slot = Number(zonedParts.minute) - baseMinute;
-    const slotType = slot === 0 ? 'daily' : slot === 1 ? 'weekly' : slot === 2 ? 'monthly' : null;
-    reportTypes = slotType && dueTypes.includes(slotType) ? [slotType] : [];
+    const utcDate = new Date(now);
+    const isSundayRotationWindow = utcDate.getUTCDay() === 0 && utcDate.getUTCHours() === 0;
+    // On the Sunday 00:00 UTC history-table rotation only, leave a wider
+    // buffer before traffic reports. Keep the normal slots otherwise.
+    const slotType = isSundayRotationWindow
+      ? (slot === 5 ? 'daily' : slot === 6 ? 'weekly' : slot === 7 ? 'monthly' : null)
+      : (slot === 0 ? 'daily' : slot === 1 ? 'weekly' : slot === 2 ? 'monthly' : null);
+    reportTypes = slotType &&
+      dueTypes.includes(slotType) &&
+      (!requestedTypes || requestedTypes.has(slotType))
+      ? [slotType]
+      : [];
   }
   if (reportTypes.length === 0) return false;
   const servers = await getAllServers(db);
+  for (const server of servers) {
+    server.traffic_snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
+  }
   const latestMetrics = await getLatestMetricsForAllServers(db);
   const periodKeys = getTrafficPeriodKeys(now, settings.notification_timezone);
   const claimedReportTypes = await claimTrafficReportTypes(
@@ -1385,7 +1398,7 @@ export async function checkTrafficReports(db, options = {}) {
       }
       if (result.changed) {
         await saveTrafficSnapshots(db, result.snapshots, server.id);
-        server.traffic_snapshots = JSON.stringify(result.snapshots);
+        server.traffic_snapshots = result.snapshots;
       }
     }
 
