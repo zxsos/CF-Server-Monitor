@@ -42,11 +42,9 @@ const renderMikusStartupLoading = (siteTitle) => {
   const title = escapeHtml(String(siteTitle || 'Komari').trim() || 'Komari')
   const loliUrl = getMikusAssetUrl('loli.gif')
   const logoUrl = getMikusAssetUrl('miku.png')
-  const petals = Array.from({ length: 18 }, () => '<span class="mikus-background-petal"></span>').join('')
   loading.dataset.mikusRendered = '1'
   loading.classList.add('mikus-startup')
   loading.innerHTML = `
-    <div class="mikus-sakura-background mikus-startup-sakura" aria-hidden="true">${petals}</div>
     <div class="mikus-startup-loading">
       <img class="mikus-startup-gif" src="${loliUrl}" alt="Loading">
       <div class="mikus-startup-brand">

@@ -662,12 +662,13 @@ const normalizeTgNotifySetting = (value) => {
 
 const isTgNotifyEnabled = (value) => normalizeTgNotifySetting(value) !== '0'
 
+const EXPIRE_REMINDER_DAYS_MAX = 365
 const normalizeExpireReminderSetting = (value) => {
   if (value === true || value === 'true') return '7'
   if (value === false || value === 'false' || value === undefined || value === null || value === '') return '0'
 
   const days = Number(value)
-  if (Number.isInteger(days) && days >= 0 && days <= 7) {
+  if (Number.isInteger(days) && days >= 0 && days <= EXPIRE_REMINDER_DAYS_MAX) {
     return String(days)
   }
 
@@ -1482,6 +1483,11 @@ const saveSettings = async () => {
 
   if (normalizeExpireNotificationTimeSetting(settings.value.expire_notification_time) !== String(settings.value.expire_notification_time)) {
     validationError.value = trans.value.invalidExpireNotificationTime || 'Expiration notification time must be an integer from 0 to 23'
+    return
+  }
+
+  if (normalizeExpireReminderSetting(settings.value.expire_reminder) !== String(settings.value.expire_reminder)) {
+    validationError.value = trans.value.invalidExpireReminder || `Expiration reminder must be an integer from 0 to ${EXPIRE_REMINDER_DAYS_MAX} days`
     return
   }
 

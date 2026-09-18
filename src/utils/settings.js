@@ -11,7 +11,8 @@ export const SITE_FIELDS = ['is_public', 'show_price', 'show_expire', 'show_tf',
 export const TG_NOTIFY_MINUTES_MIN = 2;
 export const TG_NOTIFY_MINUTES_MAX = 30;
 export const TG_NOTIFY_LEGACY_TRUE_MINUTES = 5;
-export const EXPIRE_REMINDER_DAYS_MAX = 7;
+// Preset reminders cover 1-7 days; custom reminders may be configured up to a year.
+export const EXPIRE_REMINDER_DAYS_MAX = 365;
 export const LONG_HISTORY_POINT_OPTIONS = [60, 120, 180, 240];
 export const DEFAULT_LONG_HISTORY_POINTS = 120;
 export const FRONTEND_WS_TIMEOUT_MINUTES_MAX = 1440;

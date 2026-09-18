@@ -246,9 +246,21 @@
 
           <div class="form-group flex-1">
             <label class="form-label">{{ trans.expireReminder }}</label>
-            <select v-model="settings.expire_reminder" class="form-select">
+            <select v-model="selectedExpireReminder" class="form-select">
               <option v-for="option in expireReminderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              <option :value="CUSTOM_EXPIRE_REMINDER_VALUE">{{ trans.custom || 'Custom' }}</option>
             </select>
+            <input
+              v-if="showCustomExpireReminder"
+              type="number"
+              v-model.number="settings.expire_reminder"
+              @focus="markCustomExpireReminder"
+              class="form-input mt-2"
+              min="1"
+              :max="EXPIRE_REMINDER_DAYS_MAX"
+              step="1"
+              :placeholder="trans.expireReminderCustomPlaceholder || 'Days before expiration'"
+            >
           </div>
 
           <div class="form-group flex-1">
@@ -750,9 +762,55 @@ const commonNotificationTimezones = [
   'America/New_York',
   'America/Los_Angeles'
 ]
+const EXPIRE_REMINDER_DAYS_MAX = 365
+const CUSTOM_EXPIRE_REMINDER_VALUE = '__custom__'
 const CUSTOM_NOTIFICATION_TIMEZONE_VALUE = '__custom__'
+const manualCustomExpireReminder = ref(false)
 const manualCustomNotificationTimezone = ref(false)
 const isCommonNotificationTimezone = (value) => commonNotificationTimezones.includes(String(value || '').trim())
+
+const isPresetExpireReminder = (value) => {
+  const reminder = String(value ?? '').trim()
+  return reminder === '0' || (Number.isInteger(Number(reminder)) && Number(reminder) >= 1 && Number(reminder) <= 7)
+}
+
+const selectedExpireReminder = computed({
+  get: () => {
+    const currentReminder = String(props.settings.expire_reminder ?? '').trim()
+    if (manualCustomExpireReminder.value || !isPresetExpireReminder(currentReminder)) {
+      return CUSTOM_EXPIRE_REMINDER_VALUE
+    }
+    return currentReminder || '0'
+  },
+  set: (value) => {
+    if (value === CUSTOM_EXPIRE_REMINDER_VALUE) {
+      manualCustomExpireReminder.value = true
+      const currentReminder = Number(props.settings.expire_reminder)
+      if (!Number.isInteger(currentReminder) || currentReminder < 1 || currentReminder > EXPIRE_REMINDER_DAYS_MAX) {
+        props.settings.expire_reminder = '8'
+      }
+      return
+    }
+    manualCustomExpireReminder.value = false
+    props.settings.expire_reminder = value
+  }
+})
+
+const showCustomExpireReminder = computed(() => selectedExpireReminder.value === CUSTOM_EXPIRE_REMINDER_VALUE)
+
+const markCustomExpireReminder = () => {
+  manualCustomExpireReminder.value = true
+}
+
+// Reset the local custom-mode flag only when switching to a different settings
+// object. Changes made while typing must not collapse the input after the
+// first digit (for example, typing "12" briefly produces "1").
+watch(
+  () => props.settings,
+  () => {
+    manualCustomExpireReminder.value = false
+  }
+)
 
 const selectedNotificationTimezone = computed({
   get: () => {

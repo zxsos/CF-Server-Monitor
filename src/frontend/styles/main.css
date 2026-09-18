@@ -4331,18 +4331,30 @@ body.mikus-theme #loading {
 }
 
 .mikus-global-sakura {
+    position: fixed;
+    inset: 0;
     z-index: 2147483647;
     pointer-events: none;
+    overflow: hidden;
+    --dri: -30vw;
+    --xri: 0vw;
+    --size-ri: 25px;
+    --duration-ri: 15s;
+    --delay-ri: 0s;
+    --spin-ri: 0deg;
+    --opacity-ri: 0.9;
+}
+
+@media screen and (max-width: 768px) {
+    .mikus-global-sakura {
+        --dri: -50vw;
+        --xri: 20vw;
+        --size-ri: 25px;
+        --duration-ri: 10s;
+    }
 }
 
 .mikus-background-petal {
-    --x: 50vw;
-    --size: 18px;
-    --duration: 18s;
-    --delay: 0s;
-    --drift: 12vw;
-    --spin: 420deg;
-    --petal-opacity: 0.28;
     position: absolute;
     top: -12vh;
     left: var(--x);
@@ -4350,29 +4362,30 @@ body.mikus-theme #loading {
     height: var(--size);
     background: url('/mikus/sakura.png') center / contain no-repeat;
     opacity: 0;
-    will-change: transform, opacity;
     animation: mikus-background-sakura-fall var(--duration) linear infinite;
     animation-delay: var(--delay);
+    filter: saturate(1.25) contrast(1.05);
 }
 
-.mikus-background-petal:nth-child(1) { --x: 3vw; --size: 16px; --duration: 18s; --delay: -3s; --drift: 16vw; --spin: 380deg; --petal-opacity: 0.22; }
-.mikus-background-petal:nth-child(2) { --x: 9vw; --size: 22px; --duration: 24s; --delay: -12s; --drift: 20vw; --spin: -500deg; --petal-opacity: 0.26; }
-.mikus-background-petal:nth-child(3) { --x: 16vw; --size: 14px; --duration: 19s; --delay: -8s; --drift: 11vw; --spin: 460deg; --petal-opacity: 0.24; }
-.mikus-background-petal:nth-child(4) { --x: 23vw; --size: 28px; --duration: 27s; --delay: -17s; --drift: -12vw; --spin: -420deg; --petal-opacity: 0.2; }
-.mikus-background-petal:nth-child(5) { --x: 31vw; --size: 18px; --duration: 21s; --delay: -4s; --drift: 14vw; --spin: 520deg; --petal-opacity: 0.3; }
-.mikus-background-petal:nth-child(6) { --x: 38vw; --size: 12px; --duration: 16s; --delay: -11s; --drift: 9vw; --spin: -360deg; --petal-opacity: 0.24; }
-.mikus-background-petal:nth-child(7) { --x: 44vw; --size: 24px; --duration: 25s; --delay: -6s; --drift: -16vw; --spin: 540deg; --petal-opacity: 0.22; }
-.mikus-background-petal:nth-child(8) { --x: 52vw; --size: 17px; --duration: 20s; --delay: -14s; --drift: 13vw; --spin: -480deg; --petal-opacity: 0.3; }
-.mikus-background-petal:nth-child(9) { --x: 58vw; --size: 30px; --duration: 30s; --delay: -20s; --drift: -10vw; --spin: 420deg; --petal-opacity: 0.18; }
-.mikus-background-petal:nth-child(10) { --x: 65vw; --size: 15px; --duration: 17s; --delay: -9s; --drift: 16vw; --spin: -560deg; --petal-opacity: 0.26; }
-.mikus-background-petal:nth-child(11) { --x: 71vw; --size: 21px; --duration: 23s; --delay: -2s; --drift: -14vw; --spin: 460deg; --petal-opacity: 0.24; }
-.mikus-background-petal:nth-child(12) { --x: 77vw; --size: 13px; --duration: 15s; --delay: -10s; --drift: 10vw; --spin: -380deg; --petal-opacity: 0.28; }
-.mikus-background-petal:nth-child(13) { --x: 82vw; --size: 26px; --duration: 29s; --delay: -22s; --drift: -18vw; --spin: 620deg; --petal-opacity: 0.18; }
-.mikus-background-petal:nth-child(14) { --x: 88vw; --size: 18px; --duration: 19s; --delay: -5s; --drift: 11vw; --spin: -460deg; --petal-opacity: 0.3; }
-.mikus-background-petal:nth-child(15) { --x: 94vw; --size: 23px; --duration: 26s; --delay: -16s; --drift: -21vw; --spin: 500deg; --petal-opacity: 0.22; }
-.mikus-background-petal:nth-child(16) { --x: 12vw; --size: 10px; --duration: 14s; --delay: -1s; --drift: 7vw; --spin: -300deg; --petal-opacity: 0.2; }
-.mikus-background-petal:nth-child(17) { --x: 49vw; --size: 12px; --duration: 16s; --delay: -7s; --drift: -8vw; --spin: 340deg; --petal-opacity: 0.24; }
-.mikus-background-petal:nth-child(18) { --x: 86vw; --size: 11px; --duration: 15s; --delay: -13s; --drift: 8vw; --spin: -320deg; --petal-opacity: 0.2; }
+.mikus-background-petal:nth-child(1) { --x: calc(var(--xri) + 3vw); --size: calc(var(--size-ri) + -4px); --duration: calc(var(--duration-ri) + -2s); --delay: calc(var(--delay-ri) + -3s); --drift: calc(var(--dri) + 16vw); --spin: calc(var(--spin-ri) + 380deg); --petal-opacity: calc(var(--opacity-ri) + -0.02); }
+.mikus-background-petal:nth-child(2) { --x: calc(var(--xri) + 9vw); --size: calc(var(--size-ri) + 2px); --duration: calc(var(--duration-ri) + 4s); --delay: calc(var(--delay-ri) + -12s); --drift: calc(var(--dri) + 20vw); --spin: calc(var(--spin-ri) + -500deg); --petal-opacity: calc(var(--opacity-ri) + 0.02); }
+.mikus-background-petal:nth-child(3) { --x: calc(var(--xri) + 16vw); --size: calc(var(--size-ri) + -6px); --duration: calc(var(--duration-ri) + -1s); --delay: calc(var(--delay-ri) + -8s); --drift: calc(var(--dri) + 11vw); --spin: calc(var(--spin-ri) + 460deg); --petal-opacity: calc(var(--opacity-ri) + 0); }
+.mikus-background-petal:nth-child(4) { --x: calc(var(--xri) + 23vw); --size: calc(var(--size-ri) + 8px); --duration: calc(var(--duration-ri) + 7s); --delay: calc(var(--delay-ri) + -17s); --drift: calc(var(--dri) + -12vw); --spin: calc(var(--spin-ri) + -420deg); --petal-opacity: calc(var(--opacity-ri) + -0.04); }
+.mikus-background-petal:nth-child(5) { --x: calc(var(--xri) + 31vw); --size: calc(var(--size-ri) + -2px); --duration: calc(var(--duration-ri) + 1s); --delay: calc(var(--delay-ri) + -4s); --drift: calc(var(--dri) + 14vw); --spin: calc(var(--spin-ri) + 520deg); --petal-opacity: calc(var(--opacity-ri) + 0.06); }
+.mikus-background-petal:nth-child(6) { --x: calc(var(--xri) + 38vw); --size: calc(var(--size-ri) + -8px); --duration: calc(var(--duration-ri) + -4s); --delay: calc(var(--delay-ri) + -11s); --drift: calc(var(--dri) + 9vw); --spin: calc(var(--spin-ri) + -360deg); --petal-opacity: calc(var(--opacity-ri) + 0); }
+.mikus-background-petal:nth-child(7) { --x: calc(var(--xri) + 44vw); --size: calc(var(--size-ri) + 4px); --duration: calc(var(--duration-ri) + 5s); --delay: calc(var(--delay-ri) + -6s); --drift: calc(var(--dri) + -16vw); --spin: calc(var(--spin-ri) + 540deg); --petal-opacity: calc(var(--opacity-ri) + -0.02); }
+.mikus-background-petal:nth-child(8) { --x: calc(var(--xri) + 52vw); --size: calc(var(--size-ri) + -3px); --duration: calc(var(--duration-ri) + 0s); --delay: calc(var(--delay-ri) + -14s); --drift: calc(var(--dri) + 13vw); --spin: calc(var(--spin-ri) + -480deg); --petal-opacity: calc(var(--opacity-ri) + 0.06); }
+.mikus-background-petal:nth-child(9) { --x: calc(var(--xri) + 58vw); --size: calc(var(--size-ri) + 10px); --duration: calc(var(--duration-ri) + 10s); --delay: calc(var(--delay-ri) + -20s); --drift: calc(var(--dri) + 0vw); --spin: calc(var(--spin-ri) + 420deg); --petal-opacity: calc(var(--opacity-ri) + -0.06); }
+.mikus-background-petal:nth-child(10) { --x: calc(var(--xri) + 65vw); --size: calc(var(--size-ri) + -5px); --duration: calc(var(--duration-ri) + -3s); --delay: calc(var(--delay-ri) + -9s); --drift: calc(var(--dri) + 16vw); --spin: calc(var(--spin-ri) + -560deg); --petal-opacity: calc(var(--opacity-ri) + 0.02); }
+.mikus-background-petal:nth-child(11) { --x: calc(var(--xri) + 71vw); --size: calc(var(--size-ri) + 1px); --duration: calc(var(--duration-ri) + 3s); --delay: calc(var(--delay-ri) + -2s); --drift: calc(var(--dri) + -14vw); --spin: calc(var(--spin-ri) + 460deg); --petal-opacity: calc(var(--opacity-ri) + 0); }
+.mikus-background-petal:nth-child(12) { --x: calc(var(--xri) + 77vw); --size: calc(var(--size-ri) + -7px); --duration: calc(var(--duration-ri) + -5s); --delay: calc(var(--delay-ri) + -10s); --drift: calc(var(--dri) + 10vw); --spin: calc(var(--spin-ri) + -380deg); --petal-opacity: calc(var(--opacity-ri) + 0.04); }
+.mikus-background-petal:nth-child(13) { --x: calc(var(--xri) + 82vw); --size: calc(var(--size-ri) + 6px); --duration: calc(var(--duration-ri) + 9s); --delay: calc(var(--delay-ri) + -22s); --drift: calc(var(--dri) + -18vw); --spin: calc(var(--spin-ri) + 620deg); --petal-opacity: calc(var(--opacity-ri) + -0.06); }
+.mikus-background-petal:nth-child(14) { --x: calc(var(--xri) + 88vw); --size: calc(var(--size-ri) + -2px); --duration: calc(var(--duration-ri) + -1s); --delay: calc(var(--delay-ri) + -5s); --drift: calc(var(--dri) + 11vw); --spin: calc(var(--spin-ri) + -460deg); --petal-opacity: calc(var(--opacity-ri) + 0.06); }
+.mikus-background-petal:nth-child(15) { --x: calc(var(--xri) + 94vw); --size: calc(var(--size-ri) + 3px); --duration: calc(var(--duration-ri) + 6s); --delay: calc(var(--delay-ri) + -16s); --drift: calc(var(--dri) + -21vw); --spin: calc(var(--spin-ri) + 500deg); --petal-opacity: calc(var(--opacity-ri) + -0.02); }
+.mikus-background-petal:nth-child(16) { --x: calc(var(--xri) + 12vw); --size: calc(var(--size-ri) + -10px); --duration: calc(var(--duration-ri) + -6s); --delay: calc(var(--delay-ri) + -1s); --drift: calc(var(--dri) + 7vw); --spin: calc(var(--spin-ri) + -300deg); --petal-opacity: calc(var(--opacity-ri) + -0.04); }
+.mikus-background-petal:nth-child(17) { --x: calc(var(--xri) + 49vw); --size: calc(var(--size-ri) + -8px); --duration: calc(var(--duration-ri) + -4s); --delay: calc(var(--delay-ri) + -7s); --drift: calc(var(--dri) + -8vw); --spin: calc(var(--spin-ri) + 340deg); --petal-opacity: calc(var(--opacity-ri) + 0); }
+.mikus-background-petal:nth-child(18) { --x: calc(var(--xri) + 86vw); --size: calc(var(--size-ri) + -9px); --duration: calc(var(--duration-ri) + -5s); --delay: calc(var(--delay-ri) + -13s); --drift: calc(var(--dri) + 8vw); --spin: calc(var(--spin-ri) + -320deg); --petal-opacity: calc(var(--opacity-ri) + -0.04); }
+
 
 .mikus-dashboard {
     isolation: isolate;
