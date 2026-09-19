@@ -7,6 +7,7 @@ import {
   calculateTrafficDelta,
   getDueTrafficReportTypes,
   getTrafficPeriodKeys,
+  initializeMissingTrafficSnapshots,
   normalizeTrafficSnapshots,
   updateTrafficSnapshots
 } from '../src/services/notification.js';
@@ -19,7 +20,11 @@ test('traffic snapshots initialize the three lightweight JSON baselines', () => 
   const result = updateTrafficSnapshots('{}', 10_000, 20_000, now, ['daily', 'weekly', 'monthly']);
 
   assert.equal(result.changed, true);
-  assert.deepEqual(result.usage, {});
+  assert.deepEqual(result.usage, {
+    daily: { rx_bytes: 0, tx_bytes: 0 },
+    weekly: { rx_bytes: 0, tx_bytes: 0 },
+    monthly: { rx_bytes: 0, tx_bytes: 0 }
+  });
   assert.deepEqual(Object.keys(result.snapshots), ['daily', 'weekly', 'monthly']);
   for (const snapshot of Object.values(result.snapshots)) {
     assert.deepEqual(snapshot, {
@@ -28,6 +33,36 @@ test('traffic snapshots initialize the three lightweight JSON baselines', () => 
       tx_bytes: 20_000
     });
   }
+});
+
+test('admin list initialization fills only missing traffic baselines', async () => {
+  let saved;
+  const db = {
+    prepare() {
+      return {
+        bind(value, id) {
+          saved = { value, id };
+          return { run: async () => ({ success: true }) };
+        }
+      };
+    }
+  };
+  const servers = [{
+    id: server.id,
+    traffic_snapshots: JSON.stringify({
+      daily: { time: 1, rx_bytes: 100, tx_bytes: 200 }
+    })
+  }];
+  const metrics = new Map([[server.id, { net_rx: 1_000, net_tx: 2_000 }]]);
+
+  const count = await initializeMissingTrafficSnapshots(db, servers, metrics, 10_000);
+  const snapshots = JSON.parse(saved.value);
+
+  assert.equal(count, 1);
+  assert.equal(saved.id, server.id);
+  assert.deepEqual(snapshots.daily, { time: 1, rx_bytes: 100, tx_bytes: 200 });
+  assert.deepEqual(snapshots.weekly, { time: 10, rx_bytes: 1_000, tx_bytes: 2_000 });
+  assert.deepEqual(snapshots.monthly, { time: 10, rx_bytes: 1_000, tx_bytes: 2_000 });
 });
 
 test('traffic snapshots calculate usage and roll only crossed period boundaries', () => {
@@ -42,7 +77,18 @@ test('traffic snapshots calculate usage and roll only crossed period boundaries'
   assert.equal(monday.snapshots.monthly.rx_bytes, 10_000);
 });
 
-test('traffic snapshots mark missed report periods as unavailable instead of overcounting', () => {
+test('traffic snapshots calculate partial usage from a baseline in the same period', () => {
+  const first = updateTrafficSnapshots('{}', 10_000, 20_000, Date.UTC(2026, 8, 7, 1), ['daily', 'weekly', 'monthly']);
+  const partial = updateTrafficSnapshots(first.snapshots, 15_000, 28_000, Date.UTC(2026, 8, 7, 2), ['daily', 'weekly', 'monthly']);
+
+  assert.deepEqual(partial.usage, {
+    daily: { rx_bytes: 5_000, tx_bytes: 8_000 },
+    weekly: { rx_bytes: 5_000, tx_bytes: 8_000 },
+    monthly: { rx_bytes: 5_000, tx_bytes: 8_000 }
+  });
+});
+
+test('traffic snapshots reset safely after missed report periods', () => {
   const first = updateTrafficSnapshots('{}', 10_000, 20_000, Date.UTC(2026, 8, 1, 1), ['daily']);
   const afterMissedDays = updateTrafficSnapshots(
     first.snapshots,
@@ -52,7 +98,7 @@ test('traffic snapshots mark missed report periods as unavailable instead of ove
     ['daily']
   );
 
-  assert.equal(afterMissedDays.usage.daily, undefined);
+  assert.deepEqual(afterMissedDays.usage.daily, { rx_bytes: 0, tx_bytes: 0 });
   assert.equal(afterMissedDays.snapshots.daily.rx_bytes, 25_000);
 });
 

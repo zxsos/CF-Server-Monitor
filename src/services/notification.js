@@ -1193,17 +1193,21 @@ function isPreviousTrafficPeriod(snapshot, timestamp, type, timezone) {
   if (!currentKeys || !previousKeys) return false;
 
   if (type === 'daily') {
-    return parseDateSerial(currentKeys.daily) - parseDateSerial(previousKeys.daily) === 1;
+    const difference = parseDateSerial(currentKeys.daily) - parseDateSerial(previousKeys.daily);
+    return difference === 0 || difference === 1;
   }
   if (type === 'weekly') {
-    return parseDateSerial(currentKeys.weekly) - parseDateSerial(previousKeys.weekly) === 7;
+    const difference = parseDateSerial(currentKeys.weekly) - parseDateSerial(previousKeys.weekly);
+    return difference === 0 || difference === 7;
   }
   if (type === 'monthly') {
     const currentParts = getZonedDateParts(timestamp, timezone);
     const previousParts = getZonedDateParts(previousTimestamp, timezone);
-    return currentParts && previousParts &&
+    if (!currentParts || !previousParts) return false;
+    const difference =
       (Number(currentParts.year) * 12 + Number(currentParts.month)) -
-      (Number(previousParts.year) * 12 + Number(previousParts.month)) === 1;
+      (Number(previousParts.year) * 12 + Number(previousParts.month));
+    return difference === 0 || difference === 1;
   }
   return false;
 }
@@ -1237,7 +1241,11 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
 
   for (const type of types) {
     const previous = snapshots[type];
-    if (previous && isPreviousTrafficPeriod(previous, timestamp, type, timezone)) {
+    if (!previous || !isPreviousTrafficPeriod(previous, timestamp, type, timezone)) {
+      // First report (or a gap after missed periods): reset the baseline to
+      // the current cumulative counter, but still emit a useful zero report.
+      usage[type] = { rx_bytes: 0, tx_bytes: 0 };
+    } else {
       usage[type] = {
         rx_bytes: calculateTrafficDelta(rx, previous.rx_bytes),
         tx_bytes: calculateTrafficDelta(tx, previous.tx_bytes)
@@ -1247,6 +1255,35 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
     changed = true;
   }
   return { snapshots, usage, changed };
+}
+
+export async function initializeMissingTrafficSnapshots(db, servers, latestMetricsMap, timestamp = Date.now()) {
+  const nowSeconds = Math.floor(timestamp / 1000);
+  let initialized = 0;
+
+  for (const server of servers || []) {
+    const metrics = latestMetricsMap?.get(server.id);
+    if (!metrics) continue;
+
+    const snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
+    let changed = false;
+    for (const type of ['daily', 'weekly', 'monthly']) {
+      if (snapshots[type]) continue;
+      snapshots[type] = {
+        time: nowSeconds,
+        rx_bytes: Math.max(0, Number(metrics.net_rx) || 0),
+        tx_bytes: Math.max(0, Number(metrics.net_tx) || 0)
+      };
+      changed = true;
+    }
+    if (!changed) continue;
+
+    await saveTrafficSnapshots(db, snapshots, server.id);
+    server.traffic_snapshots = snapshots;
+    initialized += 1;
+  }
+
+  return initialized;
 }
 
 export function buildTrafficReportContent(servers, rows, label) {
@@ -1337,8 +1374,14 @@ export async function checkTrafficReports(db, options = {}) {
   const settings = await loadSiteSettings(db);
   const now = Number(options.now || Date.now());
   if (!isTrafficReportEnabled(settings, 'traffic_report_enabled')) return false;
-  if (options.scheduled && !isExpireNotificationTimeDue(settings, now)) return false;
   const zonedParts = getZonedDateParts(now, settings.notification_timezone);
+  if (options.scheduled) {
+    // Strategy A: only inspect traffic reports during the first ten minutes
+    // of the configured notification hour. Claims still prevent duplicates.
+    if (!isExpireNotificationTimeDue(settings, now) || Number(zonedParts?.minute) >= 10) {
+      return false;
+    }
+  }
   if (options.scheduledMinute !== undefined && Number(zonedParts?.minute) !== Number(options.scheduledMinute)) return false;
   const dueTypes = getDueTrafficReportTypes(now, settings.notification_timezone);
   const requestedTypes = Array.isArray(options.reportTypes) && options.reportTypes.length > 0
@@ -1354,21 +1397,16 @@ export async function checkTrafficReports(db, options = {}) {
     const isSundayRotationWindow = utcDate.getUTCDay() === 0 && utcDate.getUTCHours() === 0;
     // On the Sunday 00:00 UTC history-table rotation only, leave a wider
     // buffer before traffic reports. Keep the normal slots otherwise.
-    const slotType = isSundayRotationWindow
-      ? (slot === 5 ? 'daily' : slot === 6 ? 'weekly' : slot === 7 ? 'monthly' : null)
-      : (slot === 0 ? 'daily' : slot === 1 ? 'weekly' : slot === 2 ? 'monthly' : null);
-    reportTypes = slotType &&
-      dueTypes.includes(slotType) &&
-      (!requestedTypes || requestedTypes.has(slotType))
-      ? [slotType]
-      : [];
+    // Cron delivery can be delayed by a few minutes. Treat the slots as
+    // lower bounds, and let the per-period claim below deduplicate retries.
+    const slotMinutes = isSundayRotationWindow
+      ? { daily: 5, weekly: 6, monthly: 7 }
+      : { daily: 0, weekly: 1, monthly: 2 };
+    reportTypes = dueTypes.filter(type =>
+      slot >= slotMinutes[type] && (!requestedTypes || requestedTypes.has(type))
+    );
   }
   if (reportTypes.length === 0) return false;
-  const servers = await getAllServers(db);
-  for (const server of servers) {
-    server.traffic_snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
-  }
-  const latestMetrics = await getLatestMetricsForAllServers(db);
   const periodKeys = getTrafficPeriodKeys(now, settings.notification_timezone);
   const claimedReportTypes = await claimTrafficReportTypes(
     db,
@@ -1378,7 +1416,16 @@ export async function checkTrafficReports(db, options = {}) {
   if (claimedReportTypes.length === 0) return false;
 
   try {
+    // Claim first: the existing period marker is also the send-once check.
+    // This avoids querying every server and its latest metrics on retries
+    // after this period has already been claimed.
+    const servers = await getAllServers(db);
+    for (const server of servers) {
+      server.traffic_snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
+    }
+    const latestMetrics = await getLatestMetricsForAllServers(db);
     const usageRows = { daily: [], weekly: [], monthly: [] };
+    const pendingSnapshots = [];
 
     for (const server of servers) {
       const metrics = latestMetrics.get(server.id);
@@ -1397,21 +1444,34 @@ export async function checkTrafficReports(db, options = {}) {
           : { server_id: server.id, missing: true });
       }
       if (result.changed) {
-        await saveTrafficSnapshots(db, result.snapshots, server.id);
+        pendingSnapshots.push({ id: server.id, snapshots: result.snapshots });
         server.traffic_snapshots = result.snapshots;
       }
     }
 
-    if (!hasNotificationTarget(settings)) return true;
+    if (!hasNotificationTarget(settings)) {
+      for (const pending of pendingSnapshots) {
+        await saveTrafficSnapshots(db, pending.snapshots, pending.id);
+      }
+      return true;
+    }
     const reports = [
       ...(claimedReportTypes.includes('daily') ? buildTrafficReportPayloads(servers, usageRows.daily, '每日') : []),
       ...(claimedReportTypes.includes('weekly') ? buildTrafficReportPayloads(servers, usageRows.weekly, '每周') : []),
       ...(claimedReportTypes.includes('monthly') ? buildTrafficReportPayloads(servers, usageRows.monthly, '每月') : [])
     ];
+    if (reports.length === 0) {
+      await releaseTrafficReportTypes(db, claimedReportTypes, periodKeys);
+      return false;
+    }
 
     for (const report of reports) {
       const error = await sendNotification(settings, report.msg, report.context);
-      if (error) console.warn('[TrafficReport] notification failed:', error);
+      if (error) throw new Error(error);
+    }
+
+    for (const pending of pendingSnapshots) {
+      await saveTrafficSnapshots(db, pending.snapshots, pending.id);
     }
 
     return true;
