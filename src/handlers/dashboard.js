@@ -15,7 +15,6 @@ import {
   DASHBOARD_LATENCY_WINDOW_POINTS,
   DASHBOARD_LATEST_REPORT_ID_CHUNK_SIZE
 } from '../utils/config.js';
-import { initializeMissingTrafficSnapshots } from '../services/notification.js';
 
 const PROBE_FIELDS = ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'node_4'];
 
@@ -229,7 +228,6 @@ export async function handleServersAPI(request, env, sys) {
       ? getDashboardLatencyHistory(env.DB, results)
       : Promise.resolve(new Map())
   ]);
-  await initializeMissingTrafficSnapshots(env.DB, sourceServers, latestMetricsMap);
   attachLatencyHistoryToServers(results, latencyHistory);
   
   const now = Date.now();

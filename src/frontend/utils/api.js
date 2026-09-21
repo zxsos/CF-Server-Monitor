@@ -425,6 +425,10 @@ export const login = async (username, password, turnstileToken = '', apiIndex = 
   return result
 }
 
+export const startGithubLogin = async (apiIndex = 0, mode = 'login') => {
+  return http.postByIndex('/auth/github', { mode }, apiIndex, { autoRedirect: false })
+}
+
 export const logout = () => {
   localStorage.removeItem('jwt_token')
 }

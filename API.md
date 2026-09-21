@@ -296,7 +296,7 @@ CORS_ALLOWED_ORIGINS=https://status.example.com,https://admin.example.com
       "cpu_info": "Intel(R) Xeon(R) CPU",
       "cpu_cores": "4",
       "gpu_info": [
-        { "id": "0", "name": "NVIDIA GeForce RTX 3060", "info": 12.5 }
+        { "id": "0", "name": "NVIDIA GeForce RTX 3060", "info": 12.5, "mem_used": 4096, "mem_total": 12288, "sm_clock": 1700, "power": 125.3 }
       ],
       "processes": "256",
       "tcp_conn": "32",
@@ -360,7 +360,7 @@ CORS_ALLOWED_ORIGINS=https://status.example.com,https://admin.example.com
 | `cpu_info`       | string       | -   | 是  | CPU 型号                                      |
 | `cpu_cores`      | string\|number | -   | 是  | 逻辑核心数                                       |
 | ~~`gpu`~~        | number\|null | %   | 否  | ~~独立 GPU 占用字段。~~ **2026-07-26 修订**：旧版探针仍可能发送，但后端没有独立 `gpu` 列，不会持久化，也不会在 API 中返回 |
-| `gpu_info`       | array\|null | - | 否 | 新版格式为 `[{id,name,info}]`；`info` 是占用率。无 GPU 时可为 `null`，入库后会序列化为 JSON 字符串 |
+| `gpu_info`       | array\|null | - | 否 | 新版格式为 `[{id,name,info}]`；`info` 是占用率。元素还可能包含可选键 `mem_used` / `mem_total`（MiB）、`sm_clock`（MHz）、`power`（W），不可获取时省略，后端原样透传。无 GPU 时可为 `null`，入库后会序列化为 JSON 字符串 |
 | `processes`      | string\|number | -   | 是  | 进程数                                         |
 | `tcp_conn`       | string\|number | -   | 是  | TCP 活跃连接数                                   |
 | `udp_conn`       | string\|number | -   | 是  | UDP 套接字数                                    |
@@ -1169,14 +1169,16 @@ Header：`X-Turnstile-Token: <token>`（当 `site_options.turnstile_enabled` 或
 ```json
 {
   "success": true,
-  "settings": { /* Settings 对象，见 5.4 */ },
+  "settings": { /* Settings 对象（不含 password），并包含 password_configured，见 5.4 */ },
   "api_secret": "<env.API_SECRET>"
 }
 ```
 
+`settings.password` 不会返回；`settings.password_configured` 表示是否已配置独立管理员密码。
+
 > `api_secret` 仅在 `get_settings` 中返回，方便前端展示/复制。
 >
-> ~~`settings` 包含 `jwt_secret`。~~ **2026-07-26 修订**：后端会从返回对象中剔除 `jwt_secret`；其他敏感值（如密码哈希、Cloudflare Token、Turnstile Secret）仍可能存在，必须使用 HTTPS 并限制管理 Token。
+> ~~`settings` 包含 `jwt_secret`。~~ **2026-09-19 修订**：后端会从返回对象中剔除 `jwt_secret`、`password` 和 GitHub Client Secret；其他敏感值（如 Cloudflare Token、Turnstile Secret）仍可能存在，必须使用 HTTPS 并限制管理 Token。
 
 ***
 
@@ -1847,7 +1849,7 @@ UUID 缺失或格式非法时返回 `400 { "error": "invalidServerId", "code": 4
 | `disk`                                        | object             | 磁盘 IO 当前值：`read_bps` / `write_bps` 为 B/s，`read_iops` / `write_iops` 为 ops/s，`await_ms` 为 ms，`util` 为 %；旧探针、旧历史缺失，或 6 个子字段全为 0 时不返回该对象 |
 | `cpu_cores`                                   | number             | 逻辑核心数                     |
 | `cpu_info`                                    | string             | CPU 型号                    |
-| `gpu_info`                                    | array\|string\|null | GPU 列表。实时上报 / WebSocket 可能是 `[{id,name,info}]` 数组；REST 详情和历史接口通常是同结构的 JSON 字符串，其中 `info` 为占用率 |
+| `gpu_info`                                    | array\|string\|null | GPU 列表。实时上报 / WebSocket 可能是 `[{id,name,info}]` 数组；REST 详情和历史接口通常是同结构的 JSON 字符串，其中 `info` 为占用率。元素还可能包含可选键 `mem_used` / `mem_total`（MiB）、`sm_clock`（MHz）、`power`（W），旧探针上报的数据不含这些键 |
 | `arch`                                        | string             | 架构                        |
 | `os`                                          | string             | OS 名称                     |
 | `kernel_version`                              | string             | 内核版本                    |
@@ -1904,7 +1906,7 @@ UUID 缺失或格式非法时返回 `400 { "error": "invalidServerId", "code": 4
   turnstile_site_key: string,
   turnstile_secret_key: string,
   username: string,
-  password: string,              // PBKDF2 哈希值；旧版 MD5 哈希会在成功登录后自动升级
+  password: string,              // PBKDF2 哈希值；旧版 MD5 哈希会在成功登录后自动升级；get_settings 不返回此字段
   cloudflare_account_id: string,
   cloudflare_token: string,
   custom_ct: string,             // 电信测速节点 host[:port]
@@ -1945,10 +1947,11 @@ Worker 同时注册了 cron 触发器（`scheduled` handler），可在 `wrangle
 
 | Cron          | 行为              | 备注                                                             |
 | ------------- | --------------- | -------------------------------------------------------------- |
-| `*/1 * * * *` | 每分钟：检测离线节点、资源告警 | `checkOfflineNodes`、`checkResourceAlerts`（通知） |
+| `*/1 * * * *` | 每分钟：检测离线节点、资源告警并投递通知任务 | `checkOfflineNodes`、`checkResourceAlerts`；失败任务按退避时间重试 |
 | `0 * * * *`   | 每小时：根据 UTC 日期分支 | 见下表                                                            |
-| <br />        | 每周日 0 点：表轮换    | `weeklyCleanup`（删除旧表、重命名 metrics\_history → metrics\_history\_old、创建新表） |
 | <br />        | 每小时按通知时区/到期提醒时间判断是否执行到期检测 | `checkExpiringServers` |
+| <br />        | 到期检测后按通知时区生成日/周/月流量报告 | `checkTrafficReports`；使用业务周期键去重 |
+| <br />        | 每周日 0 点：完成通知任务生成后再执行表轮换 | `weeklyCleanup`（删除旧表、重命名 metrics\_history → metrics\_history\_old、创建新表） |
 
 每周日 00:00–00:04 UTC 的表轮换窗口内，分钟任务会跳过离线节点检测。
 

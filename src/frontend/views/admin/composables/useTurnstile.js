@@ -15,6 +15,7 @@ export function useTurnstile() {
   const turnstileSiteKey = ref('')
   const turnstileToken = ref('')
   const turnstileVerified = ref(false)
+  const githubOAuthEnabled = ref(false)
   let widgetId = null
 
   const removeTurnstile = (containerSelector) => {
@@ -65,6 +66,7 @@ export function useTurnstile() {
   const applyTurnstileConfig = async (config) => {
     if (!config) return false
 
+    githubOAuthEnabled.value = config.github_oauth_enabled === true || config.github_oauth_enabled === 'true'
     turnstileEnabled.value = isTurnstileValueEnabled(config.turnstile_enabled)
     turnstileLoginEnabled.value = isTurnstileValueEnabled(config.turnstile_login_enabled)
 
@@ -86,6 +88,7 @@ export function useTurnstile() {
       turnstileSiteKey.value = ''
       turnstileToken.value = getTurnstileToken()
       turnstileVerified.value = false
+      githubOAuthEnabled.value = false
       if (loginError) loginError.value = ''
       removeTurnstile('#admin-turnstile-container')
 
@@ -111,6 +114,7 @@ export function useTurnstile() {
     turnstileSiteKey,
     turnstileToken,
     turnstileVerified,
+    githubOAuthEnabled,
     hasSharedTurnstileVerified,
     loadTurnstileConfig,
     renderTurnstile,

@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta3-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta4-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -99,7 +99,7 @@ Core flow:
 
 Recent changes:
 
-- `2.8.6`: Added traffic report feature, WSS frontend subscription 250ms batch report.
+- `2.8.6`: Added traffic report feature, WSS frontend subscription 250ms batch report, and GitHub login support.
 - `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes.
 - `2.8.4`: Added Agent WSS reporting and active hours. Agents use POST outside selected hours to reduce Do duration, and this requires Agent `v1.0.10+`. Also added account Do usage display with optimized Do broadcast requests when no frontend subscription exists to reduce idle quota consumption, added custom Webhook channel in notification settings, and added frontend WSS timeout configuration.
 - `2.8.3`: Added disk IO metrics, switched the default Agent to Go, and added realtime latency / packet-loss windows.
@@ -368,6 +368,15 @@ Admin settings can configure the frontend WSS timeout in minutes. The default `0
 ### Turnstile
 
 Cloudflare Turnstile can be enabled from the admin panel to reduce abuse of public APIs and login endpoints. In multi-site mode, use the same Site Key across sites when Turnstile is enabled.
+
+### GitHub Login
+
+1. Create an [OAuth App](https://github.com/settings/developers) under GitHub `Settings → Developer settings → OAuth Apps`.
+2. Enter its Client ID and Client Secret under Admin Login Settings, then save the configuration.
+3. Copy the exact `Authorization callback URL` shown by CFSM into the GitHub OAuth App.
+4. While signed in with the admin password, click Bind GitHub Account and authorize it. CFSM stores the account's immutable numeric GitHub ID, and only that account can use GitHub login afterward.
+
+The GitHub OAuth configuration and binding are stored in the existing D1 `site_options` JSON and do not require a schema upgrade. The Client Secret is not returned by the settings read API; leave it blank on later saves to preserve the stored value. Rebinding requires an authenticated admin session. Keep password login enabled as a recovery path.
 
 ### CORS
 

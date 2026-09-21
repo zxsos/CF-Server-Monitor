@@ -1,5 +1,9 @@
-import { getLatestMetricsForAllServers } from '../database/schema.js';
-import { updateDatabase } from '../database/updateDatabase.js';
+import {
+  createTrafficBaselineLookupContext,
+  getLatestMetricsForAllServers,
+  getTrafficBaselineMetric
+} from '../database/schema.js';
+import { ensureNotificationDeliveryTable, updateDatabase } from '../database/updateDatabase.js';
 import { clearServersListCache, getAllServers } from '../utils/cache.js';
 import {
   DEFAULT_NOTIFICATION_TEMPLATE,
@@ -20,8 +24,6 @@ import {
 } from '../utils/settings.js';
 import { detectBillingCycle, normalizeBillingCycle, renewExpireDateIfNeeded } from '../utils/serverBilling.js';
 import {
-  NOTIFICATION_MAX_RETRIES,
-  NOTIFICATION_RETRY_DELAY_MS,
   RESOURCE_ALERT_EVALUATE_RULE_BATCH_SIZE,
   RESOURCE_ALERT_EVALUATE_SERVER_BATCH_SIZE,
   RESOURCE_ALERT_NOTIFICATION_SOFT_LIMIT
@@ -31,12 +33,24 @@ const RESOURCE_ALERT_STATE_ACTIVE = 'active';
 const RESOURCE_ALERT_STATE_RECOVERED = 'recovered';
 const RESOURCE_ALERT_STATE_KEY = 'resource_alert_state';
 const DAY_MS = 24 * 60 * 60 * 1000;
-const TRAFFIC_REPORT_SERVER_BATCH_SIZE = 50;
 const TRAFFIC_REPORT_NOTIFICATION_SOFT_LIMIT = 3000;
-
+const NOTIFICATION_DELIVERY_LIMIT = 3000;
+const NOTIFICATION_RETRY_BATCH_SIZE = 10;
+const NOTIFICATION_DELIVERY_RETENTION_MS = 35 * DAY_MS;
+const NOTIFICATION_RETRY_DELAYS_MS = [
+  60_000,
+  3 * 60_000,
+  5 * 60_000,
+  10 * 60_000
+];
 function isMissingColumnError(error) {
   const message = error?.message || String(error);
   return /no such column|has no column/i.test(message);
+}
+
+function isMissingNotificationDeliveryTableError(error) {
+  const message = error?.message || String(error);
+  return /no such table[^\n]*notification_deliveries/i.test(message);
 }
 
 async function saveTrafficSnapshots(db, snapshots, serverId) {
@@ -482,24 +496,97 @@ async function evaluateResourceAlertRules(stub, ruleRequests) {
   return resultMap;
 }
 
-async function fetchWithRetry(url, options, retries = NOTIFICATION_MAX_RETRIES) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(url, options);
-      if (response.ok) return response;
-      
-      if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, NOTIFICATION_RETRY_DELAY_MS));
-      }
-    } catch (e) {
-      if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, NOTIFICATION_RETRY_DELAY_MS));
-      } else {
-        throw e;
-      }
-    }
+async function fetchWithRetry(url, options) {
+  const response = await fetch(url, options);
+  if (response.ok) return response;
+  throw new Error(`HTTP ${response.status}`);
+}
+
+function zonedDateTimeToTimestamp(parts, timezone) {
+  const desired = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, 0, 0);
+  let guess = desired;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const actual = getZonedDateParts(guess, timezone);
+    if (!actual) break;
+    const actualAsUtc = Date.UTC(
+      Number(actual.year),
+      Number(actual.month) - 1,
+      Number(actual.day),
+      Number(actual.hour),
+      0,
+      0
+    );
+    const difference = desired - actualAsUtc;
+    if (difference === 0) return guess;
+    guess += difference;
   }
-  throw new Error('Max retries exceeded');
+  return guess;
+}
+
+function trafficTargetFromDateSerial(serial, hour, timezone) {
+  const date = new Date(serial * DAY_MS);
+  return zonedDateTimeToTimestamp({
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour
+  }, timezone);
+}
+
+export function getTrafficBaselineTargets(timestamp, timezone, notificationHour) {
+  const timeZone = normalizeNotificationTimezone(timezone);
+  const hour = Number(normalizeExpireNotificationTime(notificationHour));
+  const serial = getZonedDateSerial(timestamp, timeZone);
+  const parts = getZonedDateParts(timestamp, timeZone);
+  if (!Number.isFinite(serial) || !parts) return null;
+
+  const weekday = ((serial + 4) % 7 + 7) % 7;
+  const mondayOffset = (weekday + 6) % 7;
+  const todayBoundary = trafficTargetFromDateSerial(serial, hour, timeZone);
+  const dailySerial = timestamp >= todayBoundary ? serial : serial - 1;
+
+  let weeklySerial = serial - mondayOffset;
+  let weeklyBoundary = trafficTargetFromDateSerial(weeklySerial, hour, timeZone);
+  if (timestamp < weeklyBoundary) {
+    weeklySerial -= 7;
+    weeklyBoundary = trafficTargetFromDateSerial(weeklySerial, hour, timeZone);
+  }
+
+  let monthlyBoundary = zonedDateTimeToTimestamp({
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: 1,
+    hour
+  }, timeZone);
+  if (timestamp < monthlyBoundary) {
+    let previousMonthYear = Number(parts.year);
+    let previousMonth = Number(parts.month) - 1;
+    if (previousMonth === 0) {
+      previousMonth = 12;
+      previousMonthYear -= 1;
+    }
+    monthlyBoundary = zonedDateTimeToTimestamp({
+      year: previousMonthYear,
+      month: previousMonth,
+      day: 1,
+      hour
+    }, timeZone);
+  }
+
+  return {
+    daily: trafficTargetFromDateSerial(dailySerial, hour, timeZone),
+    weekly: weeklyBoundary,
+    monthly: monthlyBoundary
+  };
+}
+
+function stableNotificationKey(value) {
+  let hash = 14695981039346656037n;
+  for (const char of String(value || '')) {
+    hash ^= BigInt(char.codePointAt(0));
+    hash = BigInt.asUintN(64, hash * 1099511628211n);
+  }
+  return hash.toString(36);
 }
 
 function stripMarkdown(value) {
@@ -673,6 +760,20 @@ function hasNotificationTarget(settings) {
     return String(settings?.notification_webhook_url || '').trim().length > 0;
   }
   return String(settings?.tg_bot_token || '').trim().length > 0;
+}
+
+export async function createNotificationSnapshot(db, options = {}) {
+  const now = Number(options.now || Date.now());
+  const settings = await loadSiteSettings(db);
+  const servers = options.includeServers === false ? null : await getAllServers(db);
+  const shouldLoadLatest = options.includeLatestMetrics === true && (
+    options.forceLatestMetrics === true ||
+    (getTgNotifyMinutes(settings.tg_notify) > 0 && hasNotificationTarget(settings))
+  );
+  const latestMetrics = shouldLoadLatest
+    ? await getLatestMetricsForAllServers(db, servers || undefined)
+    : null;
+  return Object.freeze({ now, settings, servers, latestMetrics });
 }
 
 export async function sendNotification(settings, msg, notificationContext = {}) {
@@ -859,16 +960,216 @@ export async function sendNotification(settings, msg, notificationContext = {}) 
   }
 }
 
-export async function checkOfflineNodes(db) {
-  const siteSettings = await loadSiteSettings(db);
+function notificationFits(settings, msg, context, limit) {
+  const normalizedContext = buildNotificationContext(settings || {}, msg, context || {});
+  return formatNotificationMessage(settings || {}, msg, normalizedContext).length <= limit;
+}
+
+function splitOversizedNotificationLine(settings, line, context, limit) {
+  const chars = Array.from(String(line || ''));
+  const chunks = [];
+  let offset = 0;
+  while (offset < chars.length) {
+    let low = 1;
+    let high = chars.length - offset;
+    let accepted = 1;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const candidate = chars.slice(offset, offset + middle).join('');
+      if (notificationFits(settings, candidate, context, limit)) {
+        accepted = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    chunks.push(chars.slice(offset, offset + accepted).join(''));
+    offset += accepted;
+  }
+  return chunks;
+}
+
+export function splitNotificationPayload(settings, msg, context = {}, limit = NOTIFICATION_DELIVERY_LIMIT) {
+  const safeLimit = Math.max(256, Number(limit) || NOTIFICATION_DELIVERY_LIMIT) - 32;
+  const lines = String(msg || '').split('\n');
+  const chunks = [];
+  let current = '';
+
+  const append = line => {
+    const candidate = current ? `${current}\n${line}` : line;
+    if (!current || notificationFits(settings, candidate, context, safeLimit)) {
+      current = candidate;
+      return;
+    }
+    chunks.push(current);
+    current = line;
+  };
+
+  for (const line of lines) {
+    if (notificationFits(settings, line, context, safeLimit)) {
+      append(line);
+      continue;
+    }
+    if (current) {
+      chunks.push(current);
+      current = '';
+    }
+    for (const part of splitOversizedNotificationLine(settings, line, context, safeLimit)) {
+      append(part);
+    }
+  }
+  if (current || chunks.length === 0) chunks.push(current);
+
+  return chunks.map((part, index) => ({
+    msg: part,
+    context: {
+      ...context,
+      event: chunks.length > 1
+        ? `${context.event || inferNotificationEvent(msg)}（${index + 1}/${chunks.length}）`
+        : context.event,
+      message: part
+    }
+  }));
+}
+
+export async function enqueueNotification(db, settings, task) {
+  if (!db || !task?.businessKey || !task?.type) return 0;
+  const now = Number(task.now || Date.now());
+  const period = String(task.period || '');
+  const payloads = splitNotificationPayload(settings, task.msg, task.context);
+  let inserted = 0;
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    const businessKey = `${task.businessKey}:part:${index + 1}`;
+    const insert = () => db.prepare(`
+        INSERT OR IGNORE INTO notification_deliveries
+          (business_key, type, period, payload, status, created_at, expires_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?)
+      `).bind(
+        businessKey,
+        task.type,
+        period,
+        JSON.stringify(payloads[index]),
+        now,
+        Number(task.expiresAt || (now + NOTIFICATION_DELIVERY_RETENTION_MS))
+      ).run();
+    let result;
+    try {
+      result = await insert();
+    } catch (error) {
+      if (!isMissingNotificationDeliveryTableError(error)) throw error;
+      await ensureNotificationDeliveryTable(db);
+      result = await insert();
+    }
+    inserted += getD1Changes(result);
+  }
+  return inserted;
+}
+
+export async function dispatchNotificationTasks(db, settings, options = {}) {
+  if (!db || !hasNotificationTarget(settings)) return { attempted: 0, sent: 0, failed: 0 };
+  const now = Number(options.now || Date.now());
+  const limit = Math.max(1, Math.min(50, Number(options.limit) || NOTIFICATION_RETRY_BATCH_SIZE));
+  const selectPending = () => db.prepare(`
+      SELECT business_key, payload, status, attempt_count, next_attempt_at, lease_until
+      FROM notification_deliveries
+      WHERE status IN ('pending', 'failed', 'sending') AND expires_at > ?
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).bind(now, limit).all();
+  let pendingResult;
+  try {
+    pendingResult = await selectPending();
+  } catch (error) {
+    if (!isMissingNotificationDeliveryTableError(error)) throw error;
+    await ensureNotificationDeliveryTable(db);
+    pendingResult = await selectPending();
+  }
+  const { results = [] } = pendingResult;
+
+  let attempted = 0;
+  let sent = 0;
+  let failed = 0;
+  for (const row of results) {
+    if (Number(row.next_attempt_at || 0) > now) break;
+    if (row.status === 'sending' && Number(row.lease_until || 0) > now) break;
+    const claim = await db.prepare(`
+      UPDATE notification_deliveries
+      SET status = 'sending', lease_until = ?
+      WHERE business_key = ? AND status <> 'sent'
+        AND next_attempt_at <= ? AND lease_until <= ?
+    `).bind(now + 2 * 60_000, row.business_key, now, now).run();
+    if (getD1Changes(claim) === 0) continue;
+    attempted += 1;
+    try {
+      const payload = JSON.parse(row.payload);
+      const error = await sendNotification(settings, payload.msg, payload.context);
+      if (error) throw new Error(error);
+      await db.prepare(`
+        UPDATE notification_deliveries
+        SET status = 'sent', sent_at = ?, last_error = '', lease_until = 0
+        WHERE business_key = ? AND status = 'sending'
+      `).bind(now, row.business_key).run();
+      sent += 1;
+    } catch (error) {
+      const attemptCount = Math.max(0, Number(row.attempt_count) || 0) + 1;
+      const errorMessage = String(error?.message || error).slice(0, 500);
+      if (attemptCount > NOTIFICATION_RETRY_DELAYS_MS.length) {
+        console.warn('[Notification] retries exhausted:', row.business_key, errorMessage);
+        await db.prepare(`
+          UPDATE notification_deliveries
+          SET status = 'sent', sent_at = ?, last_error = '',
+              attempt_count = ?, lease_until = 0
+          WHERE business_key = ? AND status = 'sending'
+        `).bind(
+          now,
+          attemptCount,
+          row.business_key
+        ).run();
+        failed += 1;
+        continue;
+      }
+      const retryDelay = NOTIFICATION_RETRY_DELAYS_MS[
+        Math.min(attemptCount - 1, NOTIFICATION_RETRY_DELAYS_MS.length - 1)
+      ];
+      await db.prepare(`
+        UPDATE notification_deliveries
+        SET status = 'failed', failed_at = COALESCE(failed_at, ?), last_error = ?,
+            attempt_count = ?, next_attempt_at = ?, lease_until = 0
+        WHERE business_key = ? AND status = 'sending'
+      `).bind(
+        now,
+        errorMessage,
+        attemptCount,
+        now + retryDelay,
+        row.business_key
+      ).run();
+      failed += 1;
+    }
+  }
+
+  const cleanupDate = new Date(now);
+  if (cleanupDate.getUTCHours() === 3 && cleanupDate.getUTCMinutes() === 0) {
+    await db.prepare(`
+      DELETE FROM notification_deliveries
+      WHERE expires_at <= ? OR (status = 'sent' AND sent_at < ?)
+    `).bind(now, now - NOTIFICATION_DELIVERY_RETENTION_MS).run();
+  }
+  return { attempted, sent, failed };
+}
+
+export async function checkOfflineNodes(db, options = {}) {
+  const snapshot = options.snapshot;
+  const siteSettings = snapshot?.settings || await loadSiteSettings(db);
   const tgNotifyMinutes = getTgNotifyMinutes(siteSettings.tg_notify);
 
   if (tgNotifyMinutes === 0 || !hasNotificationTarget(siteSettings)) return;
 
   try {
-    const allServers = await getAllServers(db);
-    
-    const latestMetricsMap = await getLatestMetricsForAllServers(db);
+    const allServers = snapshot?.servers || await getAllServers(db);
+    const latestMetricsMap = snapshot?.latestMetrics instanceof Map
+      ? snapshot.latestMetrics
+      : await getLatestMetricsForAllServers(db, allServers);
     
     let alertState = {};
     const stateRes = await db.prepare(
@@ -883,7 +1184,7 @@ export async function checkOfflineNodes(db) {
       }
     }
 
-    const now = Date.now();
+    const now = Number(snapshot?.now || options.now || Date.now());
     const offlineThreshold = tgNotifyMinutes * 60 * 1000;
     const offlineNodes = [];
     const recoveredNodes = [];
@@ -901,57 +1202,86 @@ export async function checkOfflineNodes(db) {
 
       if (isOffline && !alertState[s.id]) {
         offlineNodes.push({
+          id: s.id,
           name: s.name,
           lastReportTime: latestMetrics?.timestamp
         });
-        alertState[s.id] = true;
+        alertState[s.id] = {
+          offlineSince: Number(latestMetrics?.timestamp || now)
+        };
       } else if (!isOffline && alertState[s.id]) {
-        recoveredNodes.push(s);
+        recoveredNodes.push({
+          ...s,
+          offlineSince: Number(alertState[s.id]?.offlineSince || 0)
+        });
         delete alertState[s.id];
       }
     }
+
+    const queuedTasks = [];
+    if (offlineNodes.length > 0) {
+      const nodeList = offlineNodes
+        .map(n => `${n.name}  最后上报: ${formatLastReportTime(n.lastReportTime, siteSettings)}`)
+        .join('\n');
+      const identity = offlineNodes
+        .map(n => `${n.id}:${Number(n.lastReportTime || now)}`)
+        .sort()
+        .join('|');
+      queuedTasks.push(enqueueNotification(db, siteSettings, {
+        businessKey: `offline:${stableNotificationKey(identity)}`,
+        type: 'offline',
+        period: String(now),
+        now,
+        msg: nodeList,
+        context: {
+          event: '节点离线告警',
+          emoji: '❌',
+          clients: offlineNodes.map(n => n.name),
+          count: offlineNodes.length,
+          message: nodeList
+        }
+      }));
+    }
+
+    if (recoveredNodes.length > 0) {
+      const nodeList = recoveredNodes.map(n => n.name).join('\n');
+      const identity = recoveredNodes
+        .map(n => `${n.id}:${n.offlineSince}`)
+        .sort()
+        .join('|');
+      queuedTasks.push(enqueueNotification(db, siteSettings, {
+        businessKey: `recovery:${stableNotificationKey(identity)}`,
+        type: 'recovery',
+        period: String(now),
+        now,
+        msg: nodeList,
+        context: {
+          event: '节点恢复通知',
+          emoji: '✅',
+          clients: recoveredNodes.map(n => n.name),
+          count: recoveredNodes.length,
+          message: nodeList
+        }
+      }));
+    }
+    await Promise.all(queuedTasks);
 
     if (offlineNodes.length > 0 || recoveredNodes.length > 0) {
       await db.prepare(
         'INSERT INTO settings (key, value) VALUES ("alert_state", ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
       ).bind(JSON.stringify(alertState)).run();
     }
-
-    if (offlineNodes.length > 0) {
-      const nodeList = offlineNodes
-        .map(n => `${n.name}  最后上报: ${formatLastReportTime(n.lastReportTime, siteSettings)}`)
-        .join('\n');
-      const msg = nodeList;
-      await sendNotification(siteSettings, msg, {
-        event: '节点离线告警',
-        emoji: '❌',
-        clients: offlineNodes.map(n => n.name),
-        count: offlineNodes.length,
-        message: nodeList
-      });
-    }
-
-    if (recoveredNodes.length > 0) {
-      const nodeList = recoveredNodes.map(n => n.name).join('\n');
-      const msg = nodeList;
-      await sendNotification(siteSettings, msg, {
-        event: '节点恢复通知',
-        emoji: '✅',
-        clients: recoveredNodes.map(n => n.name),
-        count: recoveredNodes.length,
-        message: nodeList
-      });
-    }
   } catch (e) {
     console.error('离线检测失败:', e);
   }
 }
 
-export async function checkResourceAlerts(env) {
+export async function checkResourceAlerts(env, options = {}) {
   if (!env?.DB || !env?.METRICS_BROADCASTER) return;
 
   const db = env.DB;
-  const siteSettings = await loadSiteSettings(db, { forceRefresh: true });
+  const snapshot = options.snapshot;
+  const siteSettings = snapshot?.settings || await loadSiteSettings(db, { forceRefresh: true });
   if (!hasNotificationTarget(siteSettings)) return;
 
   const resourceConfig = getResourceAlertConfig(siteSettings);
@@ -962,7 +1292,7 @@ export async function checkResourceAlerts(env) {
   }
 
   try {
-    const allServers = await getAllServers(db);
+    const allServers = snapshot?.servers || await getAllServers(db);
     if (allServers.length === 0) {
       await clearResourceAlertState(db);
       return;
@@ -1035,7 +1365,7 @@ export async function checkResourceAlerts(env) {
     const parsedState = parseResourceAlertState(stateRow);
     let alertState = parsedState.servers || {};
 
-    const now = Date.now();
+    const now = Number(snapshot?.now || options.now || Date.now());
     const alertNodes = [];
     const recoveredNodes = [];
     const validStateKeys = new Set(configuredRuleServers.map(item => item.key));
@@ -1113,16 +1443,24 @@ export async function checkResourceAlerts(env) {
       }
     }
 
-    if (stateChanged) {
-      await saveResourceAlertState(db, configSignature, alertState, hadStoredState);
+    const notificationPayloads = buildResourceAlertNotificationPayloads(alertNodes, recoveredNodes);
+    if (notificationPayloads.length > 0) {
+      const identity = [
+        ...alertNodes.map(item => `active:${item.rule.id}:${item.server.id}`),
+        ...recoveredNodes.map(item => `recovered:${item.rule.id}:${item.server.id}`)
+      ].sort().join('|');
+      await Promise.all(notificationPayloads.map((payload, index) => enqueueNotification(db, siteSettings, {
+        businessKey: `resource:${stableNotificationKey(identity)}:batch:${index + 1}`,
+        type: 'resource',
+        period: String(now),
+        now,
+        msg: payload.msg,
+        context: payload.context
+      })));
     }
 
-    const notificationPayloads = buildResourceAlertNotificationPayloads(alertNodes, recoveredNodes);
-    for (const payload of notificationPayloads) {
-      const notificationError = await sendNotification(siteSettings, payload.msg, payload.context);
-      if (notificationError) {
-        console.warn('[ResourceAlert] notification failed:', notificationError);
-      }
+    if (stateChanged) {
+      await saveResourceAlertState(db, configSignature, alertState, hadStoredState);
     }
   } catch (e) {
     console.error('资源负载告警检测失败:', e);
@@ -1237,14 +1575,18 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
   const rx = Math.max(0, Number(currentRx) || 0);
   const tx = Math.max(0, Number(currentTx) || 0);
   const usage = {};
+  const missing = [];
   let changed = false;
 
   for (const type of types) {
     const previous = snapshots[type];
     if (!previous || !isPreviousTrafficPeriod(previous, timestamp, type, timezone)) {
-      // First report (or a gap after missed periods): reset the baseline to
-      // the current cumulative counter, but still emit a useful zero report.
+      // No usable baseline (first report of this server, a wiped snapshot, or a
+      // gap after missed periods): reset the baseline to the current cumulative
+      // counter. The delta stays zero, but the period is flagged so the report
+      // can say "no data" instead of a misleading 0 B.
       usage[type] = { rx_bytes: 0, tx_bytes: 0 };
+      missing.push(type);
     } else {
       usage[type] = {
         rx_bytes: calculateTrafficDelta(rx, previous.rx_bytes),
@@ -1254,10 +1596,22 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
     snapshots[type] = { time: nowSeconds, rx_bytes: rx, tx_bytes: tx };
     changed = true;
   }
-  return { snapshots, usage, changed };
+  return { snapshots, usage, changed, missing };
 }
 
-export async function initializeMissingTrafficSnapshots(db, servers, latestMetricsMap, timestamp = Date.now()) {
+export async function initializeMissingTrafficSnapshots(
+  db,
+  servers,
+  latestMetricsMap,
+  timestamp = Date.now(),
+  requestedTypes = ['daily', 'weekly', 'monthly'],
+  persist = true
+) {
+  const types = Array.from(new Set(
+    (Array.isArray(requestedTypes) ? requestedTypes : [])
+      .filter(type => ['daily', 'weekly', 'monthly'].includes(type))
+  ));
+  if (types.length === 0) return 0;
   const nowSeconds = Math.floor(timestamp / 1000);
   let initialized = 0;
 
@@ -1267,7 +1621,7 @@ export async function initializeMissingTrafficSnapshots(db, servers, latestMetri
 
     const snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
     let changed = false;
-    for (const type of ['daily', 'weekly', 'monthly']) {
+    for (const type of types) {
       if (snapshots[type]) continue;
       snapshots[type] = {
         time: nowSeconds,
@@ -1278,12 +1632,104 @@ export async function initializeMissingTrafficSnapshots(db, servers, latestMetri
     }
     if (!changed) continue;
 
-    await saveTrafficSnapshots(db, snapshots, server.id);
+    if (persist) await saveTrafficSnapshots(db, snapshots, server.id);
     server.traffic_snapshots = snapshots;
     initialized += 1;
   }
 
   return initialized;
+}
+
+const TRAFFIC_BASELINE_REBUILD_CONCURRENCY = 10;
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
+export async function rebuildTrafficSnapshotsFromHistory(
+  db,
+  servers,
+  latestMetricsMap,
+  timestamp = Date.now(),
+  settings = {}
+) {
+  const targets = getTrafficBaselineTargets(
+    timestamp,
+    settings.notification_timezone,
+    settings.expire_notification_time
+  );
+  if (!targets) throw new Error('Invalid traffic baseline target time');
+
+  const lookupContext = await createTrafficBaselineLookupContext(
+    db,
+    Math.min(...Object.values(targets)),
+    timestamp
+  );
+  const types = ['daily', 'weekly', 'monthly'];
+  const stats = {
+    updated: 0,
+    historyMatched: 0,
+    fallbackToLatest: 0,
+    skipped: 0,
+    failed: 0
+  };
+
+  await mapWithConcurrency(
+    Array.isArray(servers) ? servers : [],
+    TRAFFIC_BASELINE_REBUILD_CONCURRENCY,
+    async server => {
+      const latest = latestMetricsMap?.get(server.id);
+      try {
+        const baselines = await Promise.all(types.map(type =>
+          getTrafficBaselineMetric(db, server, targets[type], lookupContext)
+        ));
+        const sources = baselines.map(historical => historical || latest);
+        if (sources.some(source => !source)) {
+          stats.skipped += 1;
+          return;
+        }
+        const snapshots = {};
+
+        for (let index = 0; index < types.length; index += 1) {
+          const type = types[index];
+          const historical = baselines[index];
+          const source = sources[index];
+          const sourceTimestamp = Number(historical?.timestamp);
+          snapshots[type] = {
+            time: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+              ? Math.floor(sourceTimestamp / 1000)
+              : Math.floor(timestamp / 1000),
+            rx_bytes: Math.max(0, Number(source.net_rx) || 0),
+            tx_bytes: Math.max(0, Number(source.net_tx) || 0)
+          };
+          if (historical) stats.historyMatched += 1;
+          else stats.fallbackToLatest += 1;
+        }
+
+        await saveTrafficSnapshots(db, snapshots, server.id);
+        server.traffic_snapshots = snapshots;
+        stats.updated += 1;
+      } catch (error) {
+        stats.failed += 1;
+        console.error(`[TrafficReport] Failed to rebuild baselines for server ${server.id}:`, error);
+      }
+    }
+  );
+
+  return stats;
 }
 
 export function buildTrafficReportContent(servers, rows, label) {
@@ -1331,21 +1777,19 @@ export function buildTrafficReportContent(servers, rows, label) {
   };
 }
 
-export function buildTrafficReportPayloads(servers, rows, label, batchSize = TRAFFIC_REPORT_SERVER_BATCH_SIZE) {
+export function buildTrafficReportPayloads(servers, rows, label) {
   const rowServerIds = new Set((Array.isArray(rows) ? rows : []).map(row => row.server_id));
   const normalizedServers = (Array.isArray(servers) ? servers : [])
     .filter(server => rowServerIds.has(server.id));
-  const normalizedBatchSize = Math.max(1, Math.floor(Number(batchSize) || TRAFFIC_REPORT_SERVER_BATCH_SIZE));
   const batches = [];
   let currentBatch = [];
 
   for (const server of normalizedServers) {
     const candidate = [...currentBatch, server];
     const candidateReport = buildTrafficReportContent(candidate, rows, label);
-    const exceedsCount = candidate.length > normalizedBatchSize;
     const exceedsLength = currentBatch.length > 0 &&
       candidateReport?.msg.length > TRAFFIC_REPORT_NOTIFICATION_SOFT_LIMIT;
-    if (exceedsCount || exceedsLength) {
+    if (exceedsLength) {
       batches.push(currentBatch);
       currentBatch = [server];
     } else {
@@ -1370,15 +1814,29 @@ export function buildTrafficReportPayloads(servers, rows, label, batchSize = TRA
   return payloads;
 }
 
+export function collectMissingTrafficBaselineTypes(servers, types) {
+  const requestedTypes = Array.isArray(types) ? types : [];
+  const missingByServerId = new Map();
+
+  for (const server of servers || []) {
+    const snapshots = normalizeTrafficSnapshots(server?.traffic_snapshots);
+    const missingTypes = requestedTypes.filter(type => !snapshots[type]);
+    if (missingTypes.length > 0) missingByServerId.set(server.id, new Set(missingTypes));
+  }
+
+  return missingByServerId;
+}
+
 export async function checkTrafficReports(db, options = {}) {
-  const settings = await loadSiteSettings(db);
-  const now = Number(options.now || Date.now());
+  const snapshot = options.snapshot;
+  const settings = snapshot?.settings || await loadSiteSettings(db);
+  const now = Number(snapshot?.now || options.now || Date.now());
   if (!isTrafficReportEnabled(settings, 'traffic_report_enabled')) return false;
   const zonedParts = getZonedDateParts(now, settings.notification_timezone);
   if (options.scheduled) {
-    // Strategy A: only inspect traffic reports during the first ten minutes
-    // of the configured notification hour. Claims still prevent duplicates.
-    if (!isExpireNotificationTimeDue(settings, now) || Number(zonedParts?.minute) >= 10) {
+    // Hourly Cron may be delivered a few minutes late. The period claim below
+    // provides deduplication, so matching the configured hour is sufficient.
+    if (!isExpireNotificationTimeDue(settings, now)) {
       return false;
     }
   }
@@ -1419,11 +1877,28 @@ export async function checkTrafficReports(db, options = {}) {
     // Claim first: the existing period marker is also the send-once check.
     // This avoids querying every server and its latest metrics on retries
     // after this period has already been claimed.
-    const servers = await getAllServers(db);
+    const servers = snapshot?.servers || await getAllServers(db);
+    const latestMetrics = snapshot?.latestMetrics instanceof Map
+      ? snapshot.latestMetrics
+      : await getLatestMetricsForAllServers(db, servers);
+    // Seeding below replaces "no baseline" with the current counters, so the
+    // periods without a baseline must be captured first: they cannot be
+    // measured and must not be reported as 0 B.
+    const blankBaselineTypes = collectMissingTrafficBaselineTypes(servers, claimedReportTypes);
+    // Missing baselines are filled from the already loaded latest metrics.
+    // Keep this in memory because the report roll below persists the same
+    // snapshot once, avoiding a second D1 write for the same server.
+    await initializeMissingTrafficSnapshots(
+      db,
+      servers,
+      latestMetrics,
+      now,
+      claimedReportTypes,
+      false
+    );
     for (const server of servers) {
       server.traffic_snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
     }
-    const latestMetrics = await getLatestMetricsForAllServers(db);
     const usageRows = { daily: [], weekly: [], monthly: [] };
     const pendingSnapshots = [];
 
@@ -1438,10 +1913,12 @@ export async function checkTrafficReports(db, options = {}) {
         claimedReportTypes,
         settings.notification_timezone
       );
+      const blankTypes = blankBaselineTypes.get(server.id);
       for (const type of claimedReportTypes) {
-        usageRows[type].push(result.usage[type]
-          ? { server_id: server.id, ...result.usage[type] }
-          : { server_id: server.id, missing: true });
+        const missingBaseline = Boolean(blankTypes?.has(type)) || result.missing.includes(type);
+        usageRows[type].push(missingBaseline
+          ? { server_id: server.id, missing: true }
+          : { server_id: server.id, ...result.usage[type] });
       }
       if (result.changed) {
         pendingSnapshots.push({ id: server.id, snapshots: result.snapshots });
@@ -1455,19 +1932,36 @@ export async function checkTrafficReports(db, options = {}) {
       }
       return true;
     }
-    const reports = [
-      ...(claimedReportTypes.includes('daily') ? buildTrafficReportPayloads(servers, usageRows.daily, '每日') : []),
-      ...(claimedReportTypes.includes('weekly') ? buildTrafficReportPayloads(servers, usageRows.weekly, '每周') : []),
-      ...(claimedReportTypes.includes('monthly') ? buildTrafficReportPayloads(servers, usageRows.monthly, '每月') : [])
-    ];
+    const reportPayloads = {
+      daily: claimedReportTypes.includes('daily')
+        ? buildTrafficReportPayloads(servers, usageRows.daily, '每日')
+        : [],
+      weekly: claimedReportTypes.includes('weekly')
+        ? buildTrafficReportPayloads(servers, usageRows.weekly, '每周')
+        : [],
+      monthly: claimedReportTypes.includes('monthly')
+        ? buildTrafficReportPayloads(servers, usageRows.monthly, '每月')
+        : []
+    };
+    const reports = Object.values(reportPayloads).flat();
     if (reports.length === 0) {
       await releaseTrafficReportTypes(db, claimedReportTypes, periodKeys);
       return false;
     }
 
-    for (const report of reports) {
-      const error = await sendNotification(settings, report.msg, report.context);
-      if (error) throw new Error(error);
+    for (const type of claimedReportTypes) {
+      const typeReports = reportPayloads[type] || [];
+      for (let index = 0; index < typeReports.length; index += 1) {
+        const report = typeReports[index];
+        await enqueueNotification(db, settings, {
+          businessKey: `traffic:${type}:${periodKeys[type]}:batch:${index + 1}`,
+          type: `traffic_${type}`,
+          period: periodKeys[type],
+          now,
+          msg: report.msg,
+          context: report.context
+        });
+      }
     }
 
     for (const pending of pendingSnapshots) {
@@ -1486,15 +1980,16 @@ export async function checkTrafficReports(db, options = {}) {
 }
 
 export async function checkExpiringServers(db, options = {}) {
-  const siteSettings = await loadSiteSettings(db);
-  const now = Number(options?.now || Date.now());
+  const snapshot = options.snapshot;
+  const siteSettings = snapshot?.settings || await loadSiteSettings(db);
+  const now = Number(snapshot?.now || options?.now || Date.now());
 
   if (options?.scheduled && !isExpireNotificationTimeDue(siteSettings, now)) {
     return false;
   }
 
   try {
-    const allServers = await getAllServers(db);
+    const allServers = snapshot?.servers || await getAllServers(db);
     const expiringServers = [];
     const reminderDays = getExpireReminderDays(siteSettings.expire_reminder);
     const shouldNotify = reminderDays > 0 && hasNotificationTarget(siteSettings);
@@ -1538,12 +2033,24 @@ export async function checkExpiringServers(db, options = {}) {
       const serverList = expiringServers.map(s => `${s.name}  剩余${s.days}天  ${s.expire_date}`).join('\n');
       const msg = serverList;
       debug(`[Cron] 发送到期提醒通知: ${msg}`);
-      await sendNotification(siteSettings, msg, {
-        event: '服务器到期提醒',
-        emoji: '⚠️',
-        clients: expiringServers.map(s => s.name),
-        count: expiringServers.length,
-        message: serverList
+      const localDate = formatDateSerial(currentDateSerial);
+      const identity = expiringServers
+        .map(server => `${server.name}:${server.expire_date}`)
+        .sort()
+        .join('|');
+      await enqueueNotification(db, siteSettings, {
+        businessKey: `expiry:${localDate}:${stableNotificationKey(identity)}`,
+        type: 'expiry',
+        period: localDate,
+        now,
+        msg,
+        context: {
+          event: '服务器到期提醒',
+          emoji: '⚠️',
+          clients: expiringServers.map(s => s.name),
+          count: expiringServers.length,
+          message: serverList
+        }
       });
     }
     return true;

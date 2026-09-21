@@ -8,6 +8,31 @@ import {
 } from '../utils/serverBilling.js';
 import { HISTORY_UPGRADE_COLUMNS } from '../utils/historyFields.js';
 
+export async function ensureNotificationDeliveryTable(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+      business_key TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      period TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      failed_at INTEGER DEFAULT NULL,
+      sent_at INTEGER DEFAULT NULL,
+      last_error TEXT DEFAULT '',
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL DEFAULT 0,
+      lease_until INTEGER NOT NULL DEFAULT 0,
+      expires_at INTEGER NOT NULL
+    )
+  `).run();
+  await db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status
+    ON notification_deliveries(status, created_at)
+  `).run();
+  return { success: true };
+}
+
 
 export async function updateDatabase(db) {
   debug('开始执行数据库更新...');
@@ -25,6 +50,9 @@ export async function updateDatabase(db) {
     
     const historyCols = await addHistoryColumns(db);
     results.push({ name: 'metrics_history 表列更新', ...historyCols });
+
+    const notificationDeliveries = await ensureNotificationDeliveryTable(db);
+    results.push({ name: 'notification_deliveries 表检查', ...notificationDeliveries });
 
     // 无需清理metrics_history多余字段，消耗过大，不影响使用，每周执行weeklyCleanup的时候会自动清理
     

@@ -10,7 +10,7 @@
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta3-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta4-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#许可证)
@@ -97,7 +97,7 @@ flowchart LR
 
 近期变化：
 
-- `2.8.6`：新增流量报告功能,WSS前端订阅250ms批量上报
+- `2.8.6`：新增流量报告功能,WSS前端订阅250ms批量上报，新增GitHub登录
 - `2.8.5`：支持自定义 Ping 节点名称；增加ICMP模式；优化WSS响应逻辑；API接口优化；原皮前端优化；新增4个ping节点。
 - `2.8.4`：新增 Agent WSS 上报和 WSS 开启时段，提升实时数据推送及时性，并允许非目标时段自动改用 POST 降低 Do 时长消耗；该能力要求 Agent 升级到 `v1.0.10+`。新增账户Do用量展示，优化无前端订阅时的 Do 实时广播请求，降低空闲额度消耗。通知设置新增自定义 Webhook 渠道, 新增前端wss超时配置。
 - `2.8.3`：新增磁盘 IO 统计，默认 Agent 切换为 Go 版本，新增服务器延迟与丢包率实时窗口。
@@ -371,6 +371,15 @@ npm run build:github-page
 ### Turnstile
 
 可在后台启用 Cloudflare Turnstile，用于降低公开 API 和登录入口被刷的风险。多站点模式下，如果多个站点都启用 Turnstile，请保持 Site Key 一致。
+
+### GitHub 登录
+
+1. 在 GitHub `Settings → Developer settings → OAuth Apps` 中创建 [OAuth App](https://github.com/settings/developers)。
+2. 在 CFSM 后台的“管理员登录设置”中填写 Client ID 和 Client Secret，保存配置。
+3. 将后台显示的 `Authorization callback URL` 原样填入 GitHub OAuth App。
+4. 保持管理员密码登录状态，点击“绑定 GitHub 账号”并完成授权。系统会自动保存该账号不可变的 GitHub 数字 ID，此后仅该账号能够使用 GitHub 登录。
+
+GitHub OAuth 配置和绑定结果与其他站点配置一样保存在 D1 的 `site_options` 中，不需要升级数据库结构。Client Secret 不会通过后台设置读取接口返回；再次保存时留空即可保留原值。重新绑定必须处于管理员登录状态，建议保留账号密码登录作为应急入口。
 
 ### CORS
 

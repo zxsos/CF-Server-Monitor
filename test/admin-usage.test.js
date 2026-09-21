@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   estimateDurableObjectsBillableRequests,
+  sanitizeAdminSettings,
   summarizeDurableObjectsUsage
 } from '../src/handlers/admin.js';
 import {
@@ -87,6 +88,19 @@ assert.equal(isValidThemeOptions({ layout: 'compact' }), true);
 assert.equal(isValidThemeOptions([]), false);
 assert.equal(isValidThemeOptions(null), false);
 assert.equal(isValidThemeOptions('{"layout":"compact"}'), false);
+
+const safeAdminSettings = sanitizeAdminSettings({
+  username: 'admin',
+  password: 'pbkdf2_sha256$50000$salt$hash',
+  jwt_secret: 'jwt-secret',
+  github_client_secret: 'github-secret'
+});
+assert.equal(Object.hasOwn(safeAdminSettings, 'password'), false);
+assert.equal(Object.hasOwn(safeAdminSettings, 'jwt_secret'), false);
+assert.equal(Object.hasOwn(safeAdminSettings, 'github_client_secret'), false);
+assert.equal(safeAdminSettings.password_configured, true);
+assert.equal(safeAdminSettings.github_client_secret_configured, true);
+assert.equal(sanitizeAdminSettings({ password: '' }).password_configured, false);
 
 const themeOptionsDb = makeSettingsDb({
   appearance_options: JSON.stringify({

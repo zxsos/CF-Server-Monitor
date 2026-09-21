@@ -119,15 +119,14 @@ export async function generateToken(env, sys) {
 }
 
 export async function checkAuth(request, env, sys) {
-  return verifyToken(extractBearerToken(request), env, sys);
+  if (await verifyToken(extractBearerToken(request), env, sys)) {
+    return true;
+  }
+  return verifyToken(getCookieValue(request, AUTH_COOKIE_NAME), env, sys);
 }
 
 export async function checkWebSocketAuth(request, env, sys) {
   if (await checkAuth(request, env, sys)) {
-    return true;
-  }
-
-  if (await verifyToken(getCookieValue(request, AUTH_COOKIE_NAME), env, sys)) {
     return true;
   }
 

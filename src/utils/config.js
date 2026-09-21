@@ -1,5 +1,5 @@
 // 当前 Worker 版本：/api/config 返回给前端与主题，用于页脚和升级提示。
-export const CURRENT_VERSION = '2.8.6 Beta3';
+export const CURRENT_VERSION = '2.8.6 Beta4';
 
 // 站点设置默认值与缓存策略。
 export const DEFAULT_SITE_TITLE = 'Cloudflare Server Monitor';
@@ -33,8 +33,6 @@ export const AGENT_SERVER_DETAIL_TTL_MS = 120 * 1000;
 export const AGENT_MIN_IDLE_WSS_REPORT_INTERVAL_MS = 60 * 1000;
 
 // 通知发送与资源告警批处理：限制外部请求重试、单次规则评估规模和通知正文长度。
-export const NOTIFICATION_MAX_RETRIES = 3;
-export const NOTIFICATION_RETRY_DELAY_MS = 1000;
 export const RESOURCE_ALERT_EVALUATE_RULE_BATCH_SIZE = 20;
 export const RESOURCE_ALERT_EVALUATE_SERVER_BATCH_SIZE = 500;
 export const RESOURCE_ALERT_NOTIFICATION_SOFT_LIMIT = 3200;

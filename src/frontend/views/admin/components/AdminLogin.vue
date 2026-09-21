@@ -38,6 +38,12 @@
         <div v-if="loginError" id="login-error" class="login-error">{{ loginError }}</div>
         <button type="submit" class="login-btn">{{ loginLoading ? '⏳' : trans.login }}</button>
       </form>
+      <template v-if="githubOAuthEnabled">
+        <div class="login-divider"><span>{{ trans.or }}</span></div>
+        <button type="button" class="login-btn github-login-btn" :disabled="loginLoading" @click="$emit('github-login')">
+          {{ trans.loginWithGithub }}
+        </button>
+      </template>
     </div>
     <Footer />
   </div>
@@ -58,8 +64,9 @@ defineProps({
   turnstileSiteKey: { type: String, default: '' },
   turnstileLoginEnabled: { type: Boolean, default: false },
   turnstileEnabled: { type: Boolean, default: false },
-  turnstileVerified: { type: Boolean, default: false }
+  turnstileVerified: { type: Boolean, default: false },
+  githubOAuthEnabled: { type: Boolean, default: false }
 })
 
-defineEmits(['login', 'toggle-password', 'api-index-change'])
+defineEmits(['login', 'github-login', 'toggle-password', 'api-index-change'])
 </script>

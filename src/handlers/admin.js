@@ -6,7 +6,7 @@ import { mergeMetricsIntoServer } from '../utils/metrics.js';
 import { verifyTurnstileToken, hashPassword } from '../utils/common.js';
 import { AppError, createSuccessResponse, createBadRequestResponse, createUnauthorizedResponse, createErrorResponse } from '../utils/errors.js';
 import { addServerColumns } from '../database/updateDatabase.js';
-import { clearResourceAlertState, initializeMissingTrafficSnapshots, sendNotification } from '../services/notification.js';
+import { clearResourceAlertState, rebuildTrafficSnapshotsFromHistory, sendNotification } from '../services/notification.js';
 import { getNextServerHistoryPartitionId, HISTORY_MAX_PARTITION_ID } from '../database/indexOptimization.js';
 import { isValidTrafficCorrection, normalizeConnectionMode, normalizePingMode, normalizeWssReportInterval, validateAgentConfigInput, validatePingNode, validateNetworkInterfaces } from '../utils/agentConfig.js';
 import { scheduleAgentConfigChanged, scheduleAgentReportModeChanged } from '../utils/agentConfigNotify.js';
@@ -542,12 +542,20 @@ const PUBLIC_ADMIN_ACTION_HANDLERS = {
   clear_theme_preview_auth: handleClearThemePreviewAuthAction
 };
 
+export function sanitizeAdminSettings(fullSettings = {}) {
+  const { jwt_secret, github_client_secret, password, ...safeSettings } = fullSettings || {};
+  return {
+    ...safeSettings,
+    password_configured: Boolean(String(password || '').trim()),
+    github_client_secret_configured: Boolean(String(github_client_secret || '').trim())
+  };
+}
+
 async function handleGetSettingsAction({ env, sys, loadFullSettings }) {
   const fullSettings = loadFullSettings ? await loadFullSettings() : sys;
-  const { jwt_secret, ...safeSettings } = fullSettings || {};
   return createSuccessResponse({
     success: true,
-    settings: safeSettings,
+    settings: sanitizeAdminSettings(fullSettings),
     api_secret: env.API_SECRET
   });
 }
@@ -595,7 +603,6 @@ async function handleSaveThemeOptionsAction({ env, sys, data }) {
 async function handleListAction({ env }) {
   const servers = await getAllServers(env.DB);
   const latestMetricsMap = await getLatestMetricsForAllServers(env.DB);
-  await initializeMissingTrafficSnapshots(env.DB, servers, latestMetricsMap);
 
   const now = Date.now();
   const ONLINE_THRESHOLD = 300000;
@@ -654,6 +661,33 @@ async function handleListAction({ env }) {
     success: true,
     servers: serversWithStatus,
     stats
+  });
+}
+
+async function handleRebuildTrafficBaselinesAction({ env, sys, data }) {
+  const servers = await getAllServers(env.DB);
+  const latestMetricsMap = await getLatestMetricsForAllServers(env.DB, servers);
+  const settings = {
+    notification_timezone: normalizeNotificationTimezone(
+      data.notification_timezone ?? sys?.notification_timezone
+    ),
+    expire_notification_time: normalizeExpireNotificationTime(
+      data.expire_notification_time ?? sys?.expire_notification_time
+    )
+  };
+  const stats = await rebuildTrafficSnapshotsFromHistory(
+    env.DB,
+    servers,
+    latestMetricsMap,
+    Date.now(),
+    settings
+  );
+  clearServersListCache();
+
+  return createSuccessResponse({
+    success: true,
+    ...stats,
+    message: 'trafficBaselinesRebuilt'
   });
 }
 
@@ -733,6 +767,7 @@ const AUTHENTICATED_ADMIN_ACTION_HANDLERS = {
   start_theme_preview: handleStartThemePreviewAction,
   save_theme_options: handleSaveThemeOptionsAction,
   list: handleListAction,
+  rebuild_traffic_baselines: handleRebuildTrafficBaselinesAction,
   d1_usage: handleD1UsageAction,
   send_test_notification: handleSendTestNotificationAction
 };
@@ -757,6 +792,9 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
 
     if (data.action === 'save_settings') {
       const settings = data.settings || {};
+      if (!String(sys?.password || '').trim() && !String(settings.password || '')) {
+        return createBadRequestResponse('passwordRequired');
+      }
       const normalizedThemeUrl = normalizeThemeUrl(settings.theme_url);
       if (normalizedThemeUrl === null) {
         return createBadRequestResponse('invalidThemeUrl');
@@ -772,6 +810,26 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
         }
         if (!settings.turnstile_secret_key || settings.turnstile_secret_key.trim().length === 0) {
           return createBadRequestResponse('turnstileSecretKeyRequired');
+        }
+      }
+
+      const githubOAuthEnabled = normalizeBooleanSetting(
+        settings.github_oauth_enabled !== undefined
+          ? settings.github_oauth_enabled
+          : sys?.github_oauth_enabled
+      ) === 'true';
+      const effectiveGithubClientId = String(
+        settings.github_client_id !== undefined ? settings.github_client_id : sys?.github_client_id || ''
+      ).trim();
+      const effectiveGithubClientSecret = String(
+        settings.github_client_secret !== undefined ? settings.github_client_secret : sys?.github_client_secret || ''
+      ).trim();
+      if (githubOAuthEnabled) {
+        if (!effectiveGithubClientId) {
+          return createBadRequestResponse('githubClientIdRequired');
+        }
+        if (!effectiveGithubClientSecret) {
+          return createBadRequestResponse('githubClientSecretRequired');
         }
       }
 
@@ -901,6 +959,14 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
             siteOptions[field] = normalizeNotificationWebhookBody(settings[field]);
           } else if (field === 'notification_template') {
             siteOptions[field] = normalizeNotificationTemplate(settings[field]);
+          } else if (field === 'github_oauth_enabled') {
+            siteOptions[field] = normalizeBooleanSetting(settings[field]);
+          } else if (field === 'github_client_id' || field === 'github_client_secret') {
+            siteOptions[field] = String(settings[field] || '').trim();
+          } else if (field === 'github_user_id') {
+            siteOptions[field] = /^[1-9]\d*$/.test(String(settings[field] || '').trim())
+              ? String(settings[field]).trim()
+              : '';
           } else if (field === 'theme_url') {
             siteOptions[field] = normalizedThemeUrl;
           } else {
