@@ -1947,11 +1947,10 @@ Worker 同时注册了 cron 触发器（`scheduled` handler），可在 `wrangle
 
 | Cron          | 行为              | 备注                                                             |
 | ------------- | --------------- | -------------------------------------------------------------- |
-| `*/1 * * * *` | 每分钟：检测离线节点、资源告警并投递通知任务 | `checkOfflineNodes`、`checkResourceAlerts`；失败任务按退避时间重试 |
+| `*/1 * * * *` | 每分钟：检测离线节点、资源告警 | `checkOfflineNodes`、`checkResourceAlerts`（通知） |
 | `0 * * * *`   | 每小时：根据 UTC 日期分支 | 见下表                                                            |
+| <br />        | 每周日 0 点：表轮换    | `weeklyCleanup`（删除旧表、重命名 metrics\_history → metrics\_history\_old、创建新表） |
 | <br />        | 每小时按通知时区/到期提醒时间判断是否执行到期检测 | `checkExpiringServers` |
-| <br />        | 到期检测后按通知时区生成日/周/月流量报告 | `checkTrafficReports`；使用业务周期键去重 |
-| <br />        | 每周日 0 点：完成通知任务生成后再执行表轮换 | `weeklyCleanup`（删除旧表、重命名 metrics\_history → metrics\_history\_old、创建新表） |
 
 每周日 00:00–00:04 UTC 的表轮换窗口内，分钟任务会跳过离线节点检测。
 

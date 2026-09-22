@@ -60,7 +60,6 @@ function withoutPrivateServerFields(server) {
   delete item.bandwidth;
   delete item.note;
   delete item.auto_update;
-  delete item.traffic_snapshots;
   return normalizePublicIpFields(item);
 }
 
@@ -216,8 +215,7 @@ export async function handleServersAPI(request, env, sys) {
   }
   markFrontendRealtimeActive();
   
-  const sourceServers = await getAllServers(env.DB, isLoggedIn);
-  const results = sourceServers.map(withoutPrivateServerFields);
+  const results = (await getAllServers(env.DB, isLoggedIn)).map(withoutPrivateServerFields);
   const shouldIncludeLatencyHistory = sys.show_three_net_details === 'true';
   
   const serverIds = results.map(server => server.id).filter(Boolean);

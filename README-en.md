@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta4-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta5-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -69,7 +69,7 @@ Compared with traditional controller-style monitoring tools, CF-Server-Monitor i
 | Admin panel | Server CRUD, drag sorting, hidden servers, import/export, batch delete, database maintenance |
 | Cross-platform Agent | Mainstream Linux, Alpine Linux, OpenWrt, Synology DSM, Feiniu fnOS, FreeBSD, macOS, Windows; Go Agent by default, Shell/PowerShell still available |
 | Realtime push | Durable Objects + WebSocket refresh the UI immediately after Agent reports |
-| Alerts | Offline alerts, recovery notices, expiration reminders, resource load rules, daily/weekly/monthly traffic reports |
+| Alerts | Offline alerts, recovery notices, expiration reminders, resource load rules |
 | Multi-language | Built-in Chinese and English frontend switch; Chinese and English documentation |
 | Multi-site | GitHub Pages static frontend and aggregation of multiple Worker APIs |
 | Widget | iOS Scriptable widget script for quick mobile status checks |
@@ -99,7 +99,7 @@ Core flow:
 
 Recent changes:
 
-- `2.8.6`: Added traffic report feature, WSS frontend subscription 250ms batch report, and GitHub login support.
+- `2.8.6`: Added GitHub login support, WSS frontend subscription 250ms batch report.
 - `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes.
 - `2.8.4`: Added Agent WSS reporting and active hours. Agents use POST outside selected hours to reduce Do duration, and this requires Agent `v1.0.10+`. Also added account Do usage display with optimized Do broadcast requests when no frontend subscription exists to reduce idle quota consumption, added custom Webhook channel in notification settings, and added frontend WSS timeout configuration.
 - `2.8.3`: Added disk IO metrics, switched the default Agent to Go, and added realtime latency / packet-loss windows.
@@ -349,7 +349,6 @@ Supported alert types:
 - Offline alert: notify after a node stays offline for the configured delay; send recovery notice when it returns.
 - Expiration reminder: notify daily 1 to 7 days before expiration at the configured notification timezone and expiration notification time, or disable it.
 - Resource alert: define rules for CPU, memory, disk, inbound/outbound network speed, and similar metrics.
-- Traffic reports: when enabled, three lightweight JSON network-counter baselines are maintained in the notification timezone. Daily reports are sent every day, weekly reports on Monday, and monthly reports on the first day. A missing previous baseline is reported as unavailable. Server or Agent restarts may reset interface counters and affect the current period.
 
 Send a test notification before saving.
 
@@ -369,6 +368,10 @@ Admin settings can configure the frontend WSS timeout in minutes. The default `0
 
 Cloudflare Turnstile can be enabled from the admin panel to reduce abuse of public APIs and login endpoints. In multi-site mode, use the same Site Key across sites when Turnstile is enabled.
 
+### CORS
+
+Same-origin access is recommended by default. If you use an external static frontend or multi-site aggregation, add trusted origins to `CORS_ALLOWED_ORIGINS`.
+
 ### GitHub Login
 
 1. Create an [OAuth App](https://github.com/settings/developers) under GitHub `Settings → Developer settings → OAuth Apps`.
@@ -377,10 +380,6 @@ Cloudflare Turnstile can be enabled from the admin panel to reduce abuse of publ
 4. While signed in with the admin password, click Bind GitHub Account and authorize it. CFSM stores the account's immutable numeric GitHub ID, and only that account can use GitHub login afterward.
 
 The GitHub OAuth configuration and binding are stored in the existing D1 `site_options` JSON and do not require a schema upgrade. The Client Secret is not returned by the settings read API; leave it blank on later saves to preserve the stored value. Rebinding requires an authenticated admin session. Keep password login enabled as a recovery path.
-
-### CORS
-
-Same-origin access is recommended by default. If you use an external static frontend or multi-site aggregation, add trusted origins to `CORS_ALLOWED_ORIGINS`.
 
 ### CSP
 
@@ -474,7 +473,7 @@ After upgrading from older versions to versions with GPU, disk IO, packet loss, 
 | Cron | Description |
 | --- | --- |
 | `*/1 * * * *` | Detect offline nodes/resource alerts every minute |
-| `0 * * * *` | Run hourly combined tasks, including monthly table rotation, old table cleanup, expiration checks, and traffic reports in the configured notification timezone |
+| `0 * * * *` | Run hourly combined tasks, including monthly table rotation, old table cleanup, and expiration checks at the configured notification timezone/hour |
 
 ## Local Development
 
@@ -535,8 +534,6 @@ https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+*+*+*+* // Run hourly co
 https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+0+*+*+0 // Weekly maintenance tasks
 https://localhost:8787/cdn-cgi/handler/scheduled?cron=0+12+*+*+* // Daily maintenance tasks (for testing)
 ```
-
-
 
 ### API Check
 

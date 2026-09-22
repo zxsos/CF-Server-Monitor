@@ -4414,7 +4414,6 @@ body.mikus-theme #loading {
 .mikus-background-petal:nth-child(17) { --x: calc(var(--xri) + 49vw); --size: calc(var(--size-ri) + -8px); --duration: calc(var(--duration-ri) + -4s); --delay: calc(var(--delay-ri) + -7s); --drift: calc(var(--dri) + -8vw); --spin: calc(var(--spin-ri) + 340deg); --petal-opacity: calc(var(--opacity-ri) + 0); }
 .mikus-background-petal:nth-child(18) { --x: calc(var(--xri) + 86vw); --size: calc(var(--size-ri) + -9px); --duration: calc(var(--duration-ri) + -5s); --delay: calc(var(--delay-ri) + -13s); --drift: calc(var(--dri) + 8vw); --spin: calc(var(--spin-ri) + -320deg); --petal-opacity: calc(var(--opacity-ri) + -0.04); }
 
-
 .mikus-dashboard {
     isolation: isolate;
 }

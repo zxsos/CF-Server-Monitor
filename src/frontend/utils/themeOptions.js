@@ -7,6 +7,7 @@ export const normalizeThemeOptions = (options) => {
 const MIKUS_ASSET_BASE = '/mikus'
 const MIKUS_SAKURA_ID = 'mikus-global-sakura-background'
 const MIKUS_SAKURA_COUNT = 15
+
 const MIKUS_MOBILE_SAKURA_COUNT = 10
 
 export const isThemeOptionEnabled = (options, key) => {

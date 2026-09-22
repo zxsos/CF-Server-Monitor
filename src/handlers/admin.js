@@ -6,7 +6,7 @@ import { mergeMetricsIntoServer } from '../utils/metrics.js';
 import { verifyTurnstileToken, hashPassword } from '../utils/common.js';
 import { AppError, createSuccessResponse, createBadRequestResponse, createUnauthorizedResponse, createErrorResponse } from '../utils/errors.js';
 import { addServerColumns } from '../database/updateDatabase.js';
-import { clearResourceAlertState, rebuildTrafficSnapshotsFromHistory, sendNotification } from '../services/notification.js';
+import { clearResourceAlertState, sendNotification } from '../services/notification.js';
 import { getNextServerHistoryPartitionId, HISTORY_MAX_PARTITION_ID } from '../database/indexOptimization.js';
 import { isValidTrafficCorrection, normalizeConnectionMode, normalizePingMode, normalizeWssReportInterval, validateAgentConfigInput, validatePingNode, validateNetworkInterfaces } from '../utils/agentConfig.js';
 import { scheduleAgentConfigChanged, scheduleAgentReportModeChanged } from '../utils/agentConfigNotify.js';
@@ -664,33 +664,6 @@ async function handleListAction({ env }) {
   });
 }
 
-async function handleRebuildTrafficBaselinesAction({ env, sys, data }) {
-  const servers = await getAllServers(env.DB);
-  const latestMetricsMap = await getLatestMetricsForAllServers(env.DB, servers);
-  const settings = {
-    notification_timezone: normalizeNotificationTimezone(
-      data.notification_timezone ?? sys?.notification_timezone
-    ),
-    expire_notification_time: normalizeExpireNotificationTime(
-      data.expire_notification_time ?? sys?.expire_notification_time
-    )
-  };
-  const stats = await rebuildTrafficSnapshotsFromHistory(
-    env.DB,
-    servers,
-    latestMetricsMap,
-    Date.now(),
-    settings
-  );
-  clearServersListCache();
-
-  return createSuccessResponse({
-    success: true,
-    ...stats,
-    message: 'trafficBaselinesRebuilt'
-  });
-}
-
 async function handleD1UsageAction({ data, sys }) {
   const hasCloudflareToken = Object.prototype.hasOwnProperty.call(data, 'cloudflare_token');
   const hasCloudflareAccountId = Object.prototype.hasOwnProperty.call(data, 'cloudflare_account_id');
@@ -767,7 +740,6 @@ const AUTHENTICATED_ADMIN_ACTION_HANDLERS = {
   start_theme_preview: handleStartThemePreviewAction,
   save_theme_options: handleSaveThemeOptionsAction,
   list: handleListAction,
-  rebuild_traffic_baselines: handleRebuildTrafficBaselinesAction,
   d1_usage: handleD1UsageAction,
   send_test_notification: handleSendTestNotificationAction
 };
@@ -846,12 +818,7 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
         ? normalizeResourceAlertRules(settings.resource_alert_rules)
         : currentResourceAlertRules;
       const resourceAlertEnabled = normalizedResourceAlertRules.length > 0;
-      const trafficReportEnabled = normalizeBooleanSetting(
-        settings.traffic_report_enabled !== undefined
-          ? settings.traffic_report_enabled
-          : sys?.traffic_report_enabled
-      ) === 'true';
-      if (tgNotify !== '0' || expireReminder !== '0' || resourceAlertEnabled || trafficReportEnabled) {
+      if (tgNotify !== '0' || expireReminder !== '0' || resourceAlertEnabled) {
         const webhookEnabled = settings.notification_webhook_enabled !== undefined
           ? normalizeBooleanSetting(settings.notification_webhook_enabled) === 'true'
           : normalizeBooleanSetting(sys?.notification_webhook_enabled) === 'true';
@@ -945,8 +912,6 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
             siteOptions[field] = normalizeNotificationTimezone(settings[field]);
           } else if (field === 'expire_notification_time') {
             siteOptions[field] = normalizeExpireNotificationTime(settings[field]);
-          } else if (field === 'traffic_report_enabled') {
-            siteOptions[field] = normalizeBooleanSetting(settings[field]);
           } else if (field === 'notification_webhook_enabled') {
             siteOptions[field] = normalizeBooleanSetting(settings[field]);
           } else if (field === 'notification_webhook_method') {

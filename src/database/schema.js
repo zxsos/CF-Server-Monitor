@@ -2,12 +2,7 @@ import { getAllServers, getLatestMetricsCache, setLatestMetricsCache, getMetrics
 import { saveSiteOptions, debug, getSettingByKey, normalizeLongHistoryPoints, DEFAULT_LONG_HISTORY_POINTS } from '../utils/settings.js';
 import { attachDiskMetricsObject, flattenDiskMetrics, isDisabledProbeMetric, normalizeProbeMetricRow } from '../utils/metrics.js';
 import { ensureServerOptimization, buildHistoryId, getServerHistoryInfo, getHistoryIdRange } from './indexOptimization.js';
-import {
-  addHistoryColumns,
-  ensureHistoryIndex,
-  ensureNotificationDeliveryTable,
-  isHistoryOptimized
-} from './updateDatabase.js';
+import { addHistoryColumns, ensureHistoryIndex, isHistoryOptimized } from './updateDatabase.js';
 import {
   buildSparseHistoryQuery,
   shouldUseSparseHistorySampling
@@ -93,7 +88,6 @@ export async function initDatabase(db) {
           expire_date TEXT DEFAULT '',
           traffic_limit TEXT DEFAULT '',
           traffic_calc_type TEXT DEFAULT 'total',
-          traffic_snapshots TEXT DEFAULT '{}',
           "interface" TEXT DEFAULT '',
           reset_day INTEGER DEFAULT 1,
           collect_interval INTEGER DEFAULT 0,
@@ -133,8 +127,6 @@ export async function initDatabase(db) {
     }else{
       await ensureHistoryIndex(db);
     }
-
-    await ensureNotificationDeliveryTable(db);
 
     debug('✅ 数据库初始化完成');
     dbInitialized = true;
@@ -765,7 +757,7 @@ export async function getLatestMetrics(db, serverId, server = null) {
   }
 }
 
-export async function getLatestMetricsForAllServers(db, providedServers = null) {
+export async function getLatestMetricsForAllServers(db) {
   const now = Date.now();
   const cacheInfo = getLatestMetricsCache();
   if (cacheInfo.cache && now - cacheInfo.time < cacheInfo.ttl) {
@@ -776,9 +768,7 @@ export async function getLatestMetricsForAllServers(db, providedServers = null) 
   await ensureHistoryIndex(db);
 
   try {
-    const servers = Array.isArray(providedServers)
-      ? providedServers
-      : await getAllServers(db);
+    const servers = await getAllServers(db);
 
     const entries = await Promise.all(
       servers.map(s =>
@@ -794,47 +784,4 @@ export async function getLatestMetricsForAllServers(db, providedServers = null) 
     const cacheInfo = getLatestMetricsCache();
     return cacheInfo.cache || new Map();
   }
-}
-
-export async function createTrafficBaselineLookupContext(db, earliestTimestamp, now = Date.now()) {
-  const nowDate = new Date(now);
-  const day = nowDate.getUTCDay();
-  const tableBoundary = Date.UTC(
-    nowDate.getUTCFullYear(),
-    nowDate.getUTCMonth(),
-    nowDate.getUTCDate() - day
-  );
-  const needsOldTable = Number(earliestTimestamp) < tableBoundary;
-  const oldTableExists = needsOldTable && !!await db.prepare(
-    `SELECT name FROM sqlite_master WHERE type='table' AND name='metrics_history_old'`
-  ).first();
-  return { now: Number(now), tableBoundary, oldTableExists };
-}
-
-export async function getTrafficBaselineMetric(db, server, startTimestamp, context) {
-  const serverId = String(server?.id || '').trim();
-  const start = Number(startTimestamp);
-  const end = Number(context?.now || Date.now());
-  if (!serverId || !Number.isFinite(start) || start <= 0 || start >= end) return null;
-
-  const queryTable = async tableName => {
-    const historyInfo = await getServerHistoryInfo(db, serverId, server);
-    if (!historyInfo.partitionId) return null;
-    const range = getHistoryIdRange(historyInfo.partitionId, start, end);
-    return db.prepare(`
-      SELECT timestamp, net_rx, net_tx
-      FROM ${tableName}
-      WHERE id >= ? AND id <= ?
-      ORDER BY id ASC
-      LIMIT 1
-    `).bind(range.startId, range.endId).first();
-  };
-
-  if (context?.oldTableExists && start < Number(context.tableBoundary)) {
-    const oldMetric = await queryTable('metrics_history_old');
-    if (oldMetric) return normalizeProbeMetricRow(oldMetric);
-  }
-
-  const currentMetric = await queryTable('metrics_history');
-  return currentMetric ? normalizeProbeMetricRow(currentMetric) : null;
 }
