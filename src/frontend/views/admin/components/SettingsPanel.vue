@@ -41,7 +41,7 @@
         </div>
 
         <div class="form-row">
-          <div class="form-group  ">
+          <div class="form-group ">
             <label class="form-label">
               {{ trans.bgImage }}
               <HelpTooltip :text="trans.remoteImageTip" />
@@ -70,9 +70,7 @@
             </div>
             <img v-if="settings.custom_bg_mobile" :src="settings.custom_bg_mobile" class="bg-preview">
           </div>
-        </div>
 
-        <div class="form-row">
           <div class="form-group">
             <label class="form-label">
               {{ trans.favicon }}
@@ -92,10 +90,20 @@
         <div class="form-row">
           <div class="form-group flex-1">
             <label class="form-label">
-              {{ trans.themeOptions }}
-              <HelpTooltip :text="trans.themeOptionsTip" />
+              {{ trans.cspStatic }}
+              <HelpTooltip :text="trans.cspStaticTip" />
             </label>
-            <textarea v-model="settings.theme_options" class="form-textarea" rows="5" placeholder='{"mikus":1}'></textarea>
+            <input type="text" v-model="settings.csp_static" class="form-input" placeholder="https://unpkg.com,https://cdn.jsdelivr.net" @blur="validateCspField('csp_static')">
+            <p v-if="cspErrors.csp_static" class="text-danger text-sm">{{ cspErrors.csp_static }}</p>
+          </div>
+
+          <div class="form-group flex-1">
+            <label class="form-label">
+              {{ trans.cspApi }}
+              <HelpTooltip :text="trans.cspApiTip" />
+            </label>
+            <input type="text" v-model="settings.csp_api" class="form-input" placeholder="https://api.example.com" @blur="validateCspField('csp_api')">
+            <p v-if="cspErrors.csp_api" class="text-danger text-sm">{{ cspErrors.csp_api }}</p>
           </div>
         </div>
       </div>
@@ -123,20 +131,10 @@
         <div class="form-row">
           <div class="form-group flex-1">
             <label class="form-label">
-              {{ trans.cspStatic }}
-              <HelpTooltip :text="trans.cspStaticTip" />
+              {{ trans.themeOptions }}
+              <HelpTooltip :text="trans.themeOptionsTip" />
             </label>
-            <input type="text" v-model="settings.csp_static" class="form-input" placeholder="https://unpkg.com,https://cdn.jsdelivr.net" @blur="validateCspField('csp_static')">
-            <p v-if="cspErrors.csp_static" class="text-danger text-sm">{{ cspErrors.csp_static }}</p>
-          </div>
-
-          <div class="form-group flex-1">
-            <label class="form-label">
-              {{ trans.cspApi }}
-              <HelpTooltip :text="trans.cspApiTip" />
-            </label>
-            <input type="text" v-model="settings.csp_api" class="form-input" placeholder="https://api.example.com" @blur="validateCspField('csp_api')">
-            <p v-if="cspErrors.csp_api" class="text-danger text-sm">{{ cspErrors.csp_api }}</p>
+            <textarea v-model="settings.theme_options" class="form-textarea" rows="5" placeholder='{"mikus":1}'></textarea>
           </div>
         </div>
 
@@ -267,6 +265,7 @@
             <label class="form-label">{{ trans.notificationChannel || 'Notification Channel' }}</label>
             <select v-model="notificationChannel" class="form-select">
               <option value="builtin">{{ trans.builtinNotification || 'Built-in' }}</option>
+              <option value="smtp">{{ trans.smtpNotification || 'SMTP Email' }}</option>
               <option value="webhook">{{ trans.customWebhook || 'Custom Webhook' }}</option>
             </select>
           </div>
@@ -320,6 +319,75 @@
               <button type="button" class="password-toggle" @click="$emit('toggle-password', 'tgChatId')">
                 {{ passwordVisible.tgChatId ? '🙈' : '👁️' }}
               </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="notificationChannel === 'smtp'" class="resource-alert-rule">
+          <div class="resource-alert-rule-title">
+            <span>{{ trans.smtpNotification || 'SMTP Email' }}</span>
+            <HelpTooltip :text="trans.smtpTip || 'Sends plain-text email via cloudflare:sockets (25 port is blocked by Cloudflare Workers). QQ / 163 require an SMTP authorization code, not the login password.'" />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpHost || 'SMTP Host' }}</label>
+              <input type="text" name="smtp_host" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model.trim="smtpConfig.host" @blur="validateSmtpField('host')" class="form-input" placeholder="smtp.example.com">
+              <p v-if="smtpErrors.host" class="text-danger text-sm">{{ smtpErrors.host }}</p>
+            </div>
+
+            <div class="form-group flex-1">
+              <label class="form-label">
+                {{ trans.smtpPort || 'Port' }}
+                <HelpTooltip :text="trans.smtpPortTip || 'Cloudflare Workers blocks port 25. Use 465 (implicit TLS) or 587 (STARTTLS).'" />
+              </label>
+              <input type="number" name="smtp_port" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model.trim="smtpConfig.port" @blur="validateSmtpField('port')" class="form-input" list="smtp-port-presets" placeholder="465">
+              <datalist id="smtp-port-presets">
+                <option v-for="port in smtpPortPresets" :key="port" :value="port"></option>
+              </datalist>
+              <p v-if="smtpErrors.port" class="text-danger text-sm">{{ smtpErrors.port }}</p>
+            </div>
+
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpSecure || 'Encryption' }}</label>
+              <select v-model="smtpConfig.secure" @change="validateSmtpField('port')" class="form-select">
+                <option value="auto">{{ trans.smtpSecureAuto || 'Auto (by port)' }}</option>
+                <option value="tls">{{ trans.smtpSecureTls || 'Implicit TLS (465)' }}</option>
+                <option value="starttls">{{ trans.smtpSecureStarttls || 'STARTTLS (587)' }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpUser || 'Username' }}</label>
+              <input type="text" name="smtp_user" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model.trim="smtpConfig.username" @blur="validateSmtpField('username')" class="form-input" placeholder="you@example.com">
+              <p v-if="smtpErrors.username" class="text-danger text-sm">{{ smtpErrors.username }}</p>
+            </div>
+
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpPassword || 'Password' }}</label>
+              <div class="password-input-wrapper">
+                <input type="text" name="smtp_password" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model="smtpConfig.password" @blur="validateSmtpField('password')" :class="['form-input', { 'secret-input-masked': !passwordVisible.smtpPassword }]" placeholder="SMTP password / app password">
+                <button type="button" class="password-toggle" @click="$emit('toggle-password', 'smtpPassword')">
+                  {{ passwordVisible.smtpPassword ? '🙈' : '👁️' }}
+                </button>
+              </div>
+              <p v-if="smtpErrors.password" class="text-danger text-sm">{{ smtpErrors.password }}</p>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpFrom || 'From' }}</label>
+              <input type="text" name="smtp_from" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model.trim="smtpConfig.from" @blur="validateSmtpField('from')" class="form-input" placeholder="optional, defaults to username">
+              <p v-if="smtpErrors.from" class="text-danger text-sm">{{ smtpErrors.from }}</p>
+            </div>
+
+            <div class="form-group flex-1">
+              <label class="form-label">{{ trans.smtpTo || 'Recipients' }}</label>
+              <input type="text" name="smtp_to" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model.trim="smtpConfig.to" @blur="validateSmtpField('to')" class="form-input" placeholder="a@example.com,b@example.com">
+              <p v-if="smtpErrors.to" class="text-danger text-sm">{{ smtpErrors.to }}</p>
             </div>
           </div>
         </div>
@@ -932,7 +1000,7 @@ const cspErrors = reactive({
 
 const offlineNotifyOptions = computed(() => [
   { value: '0', label: `${props.trans.disabled}` },
-  ...[3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30].map(minutes => {
+  ...[5, 6, 7, 8, 9, 10, 15, 20, 30].map(minutes => {
     const label = props.trans.notifyOfflineMinutes
       ? props.trans.notifyOfflineMinutes.replace('{minutes}', minutes)
       : `${minutes} min`
@@ -1012,12 +1080,199 @@ const formatWssHourRange = hour => {
   return `${localHourText}:00-${localHourText}:59 ${props.trans.localTime} (${utcHourText}:00-${utcHourText}:59 UTC)`
 }
 
+// SMTP 通知复用后端 tg_bot_token 字段，采用前缀协议存储（方案 A）：
+// smtp://<user>:<pass>@<host>:<port>?from=<from>&to=<a,b>&secure=<auto|tls|starttls>
+const SMTP_PORT_PRESETS = ['465', '587']
+const smtpPortPresets = SMTP_PORT_PRESETS
+const defaultSmtpConfig = () => ({
+  host: '',
+  port: '465',
+  username: '',
+  password: '',
+  from: '',
+  to: '',
+  secure: 'auto'
+})
+const smtpConfig = reactive(defaultSmtpConfig())
+const smtpChannelActive = ref(false)
+// SMTP 序列化结果是否已覆写共享的 tg_bot_token 字段；
+// 在 SMTP 配置成形（host/用户名/密码齐全）之前不覆写，避免清空 Telegram/飞书等已有渠道配置
+const smtpTokenApplied = ref(false)
+const smtpErrors = reactive({ host: '', username: '', password: '', port: '', from: '', to: '' })
+const SMTP_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const isSmtpToken = token => String(token || '').trim().toLowerCase().indexOf('smtp:') === 0
+
+const safeDecode = value => {
+  try {
+    return decodeURIComponent(value)
+  } catch (_) {
+    return value
+  }
+}
+
+const buildSmtpToken = cfg => {
+  const host = String(cfg.host || '').trim()
+  if (!host) return ''
+  const userinfo = `${encodeURIComponent(cfg.username || '')}:${encodeURIComponent(cfg.password || '')}`
+  const params = new URLSearchParams()
+  if (String(cfg.from || '').trim()) params.set('from', String(cfg.from).trim())
+  if (String(cfg.to || '').trim()) params.set('to', String(cfg.to).trim())
+  if (cfg.secure && cfg.secure !== 'auto') params.set('secure', cfg.secure)
+  const query = params.toString()
+  const port = String(cfg.port || '').trim()
+  return `smtp://${userinfo}@${host}${port ? `:${port}` : ''}${query ? `?${query}` : ''}`
+}
+
+const parseSmtpToken = token => {
+  try {
+    const url = new URL(String(token).trim())
+    return {
+      host: url.hostname || '',
+      port: url.port || '',
+      username: safeDecode(url.username || ''),
+      password: safeDecode(url.password || ''),
+      from: url.searchParams.get('from') || '',
+      to: url.searchParams.get('to') || '',
+      secure: url.searchParams.get('secure') || 'auto'
+    }
+  } catch (_) {
+    return defaultSmtpConfig()
+  }
+}
+
+const applySmtpToken = token => {
+  Object.assign(smtpConfig, parseSmtpToken(token))
+}
+
+// 将 SMTP 表单序列化写入共享的 tg_bot_token；配置未成形时保留原有渠道值
+const syncSmtpToken = () => {
+  const token = buildSmtpToken(smtpConfig)
+  if (!smtpTokenApplied.value) {
+    if (!token || !smtpConfig.username || !smtpConfig.password) return
+    smtpTokenApplied.value = true
+  }
+  props.settings.tg_bot_token = token
+}
+
+const smtpRequiredMessage = () => props.trans.smtpFieldRequired || 'This field is required'
+
+const validateSmtpField = (field) => {
+  if (field === 'host' || field === 'username' || field === 'password') {
+    const valid = Boolean(String(smtpConfig[field] || '').trim())
+    smtpErrors[field] = valid ? '' : smtpRequiredMessage()
+    return valid
+  }
+  if (field === 'port') {
+    const port = Number(String(smtpConfig.port || '').trim())
+    if (!Number.isInteger(port) || port <= 0 || port > 65535 || port === 25) {
+      smtpErrors.port = props.trans.smtpPortInvalid || 'Invalid port (1-65535, port 25 is blocked by Cloudflare Workers)'
+      return false
+    }
+    // auto 模式下仅 465/587 可保证加密连接，其他端口必须显式选择加密方式，避免凭据明文传输
+    if (smtpConfig.secure === 'auto' && port !== 465 && port !== 587) {
+      smtpErrors.port = props.trans.smtpSecureRequired || 'Ports other than 465/587 require an explicit encryption method'
+      return false
+    }
+    smtpErrors.port = ''
+    return true
+  }
+  if (field === 'from') {
+    const value = String(smtpConfig.from || '').trim()
+    // 发件人可留空（默认使用用户名），填写时必须是合法邮箱地址
+    if (!value) {
+      smtpErrors.from = ''
+      return true
+    }
+    if (!SMTP_EMAIL_PATTERN.test(value)) {
+      smtpErrors.from = props.trans.smtpInvalidEmail || 'Enter a valid email address, e.g. user@example.com'
+      return false
+    }
+    smtpErrors.from = ''
+    return true
+  }
+  if (field === 'to') {
+    const list = String(smtpConfig.to || '')
+      .split(',')
+      .map(address => address.trim())
+      .filter(Boolean)
+    if (list.length === 0) {
+      smtpErrors.to = props.trans.smtpToRequired || 'At least one recipient email is required'
+      return false
+    }
+    if (list.some(address => !SMTP_EMAIL_PATTERN.test(address))) {
+      smtpErrors.to = props.trans.smtpInvalidEmail || 'Enter a valid email address, e.g. user@example.com'
+      return false
+    }
+    smtpErrors.to = ''
+    return true
+  }
+  return true
+}
+
+// 当前渠道为 SMTP 时校验全部必填项；供保存与测试通知前调用
+const validateSmtpFields = () => {
+  if (notificationChannel.value !== 'smtp') {
+    Object.keys(smtpErrors).forEach(key => { smtpErrors[key] = '' })
+    return true
+  }
+  return ['host', 'username', 'password', 'port', 'from', 'to']
+    .map(field => validateSmtpField(field))
+    .every(Boolean)
+}
+
 const notificationChannel = computed({
-  get: () => props.settings.notification_webhook_enabled ? 'webhook' : 'builtin',
+  get: () => {
+    if (props.settings.notification_webhook_enabled) return 'webhook'
+    if (smtpChannelActive.value || isSmtpToken(props.settings.tg_bot_token)) return 'smtp'
+    return 'builtin'
+  },
   set: (value) => {
-    props.settings.notification_webhook_enabled = value === 'webhook'
+    if (value === 'webhook') {
+      smtpChannelActive.value = false
+      props.settings.notification_webhook_enabled = true
+      return
+    }
+    props.settings.notification_webhook_enabled = false
+    if (value === 'smtp') {
+      if (isSmtpToken(props.settings.tg_bot_token)) {
+        applySmtpToken(props.settings.tg_bot_token)
+        smtpTokenApplied.value = true
+      } else {
+        Object.assign(smtpConfig, defaultSmtpConfig())
+        smtpTokenApplied.value = false
+      }
+      smtpChannelActive.value = true
+      syncSmtpToken()
+      return
+    }
+    // builtin：仅当共享字段确实被 SMTP 覆写时才清理，保留尚未被覆盖的原渠道配置
+    if (isSmtpToken(props.settings.tg_bot_token)) {
+      props.settings.tg_bot_token = ''
+      props.settings.tg_chat_id = ''
+    }
+    smtpChannelActive.value = false
+    smtpTokenApplied.value = false
   }
 })
+
+// smtpConfig 变化实时序列化到 tg_bot_token（仅 SMTP 渠道激活且配置成形后）
+watch(smtpConfig, () => {
+  if (smtpChannelActive.value) {
+    syncSmtpToken()
+  }
+}, { deep: true })
+
+// 外部（如设置加载）写入 smtp token 时反向解析到表单
+watch(() => props.settings.tg_bot_token, (token) => {
+  if (isSmtpToken(token)) {
+    smtpChannelActive.value = true
+    smtpTokenApplied.value = true
+    if (buildSmtpToken(smtpConfig) !== String(token).trim()) {
+      applySmtpToken(token)
+    }
+  }
+}, { immediate: true })
 
 const ensureResourceAlertRules = () => {
   if (!Array.isArray(props.settings.resource_alert_rules)) {
@@ -1233,5 +1488,5 @@ onBeforeUnmount(() => {
   clearTimeout(githubCallbackCopiedTimer)
 })
 
-defineExpose({ validateCspField, cspErrors, validatePingNodes, pingNodeErrors })
+defineExpose({ validateCspField, cspErrors, validatePingNodes, pingNodeErrors, validateSmtpFields, smtpErrors })
 </script>

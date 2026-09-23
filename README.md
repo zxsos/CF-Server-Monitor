@@ -10,7 +10,7 @@
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta5-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta6-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#许可证)
@@ -97,7 +97,7 @@ flowchart LR
 
 近期变化：
 
-- `2.8.6`：新增GitHub登录,WSS前端订阅250ms批量上报
+- `2.8.6`：新增GitHub登录,WSS前端订阅250ms批量上报,增加SMTP通知渠道
 - `2.8.5`：支持自定义 Ping 节点名称；增加ICMP模式；优化WSS响应逻辑；API接口优化；原皮前端优化；新增4个ping节点。
 - `2.8.4`：新增 Agent WSS 上报和 WSS 开启时段，提升实时数据推送及时性，并允许非目标时段自动改用 POST 降低 Do 时长消耗；该能力要求 Agent 升级到 `v1.0.10+`。新增账户Do用量展示，优化无前端订阅时的 Do 实时广播请求，降低空闲额度消耗。通知设置新增自定义 Webhook 渠道, 新增前端wss超时配置。
 - `2.8.3`：新增磁盘 IO 统计，默认 Agent 切换为 Go 版本，新增服务器延迟与丢包率实时窗口。
@@ -283,7 +283,7 @@ npm run build:github-page
 
 ## 通知与告警
 
-在管理后台 -> 全局设置 -> 通知 中配置。通知分为“内置渠道”和“自定义 Webhook”两种渠道；选择自定义 Webhook 后，后端只会发送 Webhook，不会再调用内置渠道。
+在管理后台 -> 全局设置 -> 通知 中配置。通知分为“内置渠道”、“SMTP 邮件”和“自定义 Webhook”三种渠道；选择自定义 Webhook 后，后端只会发送 Webhook，不会再调用内置渠道。
 
 ### 内置渠道
 
@@ -300,6 +300,24 @@ npm run build:github-page
 | Server 酱    | `https://sctapi.ftqq.com/<SendKey>.send` 或 `server:https://example.com/<SendKey>.send` | 留空          |
 | WxPusher    | `https://wxpusher.zjiecode.com/api/send/message/[SPT_xxx]/Hello` | 留空          |
 | Gotify      | `https://gotify.example.com/message?token=xxx`                   | 留空          |
+
+### SMTP 邮件
+
+选择“SMTP 邮件”渠道后，在设置面板填写 SMTP 服务器、端口、加密方式、用户名、密码、发件人和收件人即可，无需手动拼接配置。后端会将其序列化为 `smtp://` 前缀协议存入 `tg_bot_token` 字段，并通过 [`cloudflare-smtp`](https://github.com/Bruol/cloudflare-smtp)（基于 `cloudflare:sockets`）直连邮件服务器发送纯文本邮件。
+
+配置格式（前端自动生成，手动填写内置渠道 Bot Token 时亦可使用）：
+
+```text
+smtp://<用户名>:<密码>@<host>:<port>?from=<发件人>&to=<收件人1,收件人2>&secure=<auto|tls|starttls>
+```
+
+注意事项：
+
+- **Cloudflare Workers 永久封禁 25 端口出站**，只能使用 `465`（隐式 TLS）或 `587`（STARTTLS）；`secure` 缺省时按端口自动选择。
+- 用户名、密码中的特殊字符需 URL 编码（例如 `@` 写作 `%40`），前端表单会自动处理。
+- QQ 邮箱、163 邮箱等需使用 **SMTP 授权码**而非登录密码；发件人留空时默认等于用户名。
+- 当前仅发送纯文本邮件（不支持 HTML、附件、抄送），发送失败会按 `NOTIFICATION_MAX_RETRIES` 自动重试。
+- 能否成功送达还取决于邮件服务商对 Cloudflare 出口 IP 及 SPF / DKIM 的校验策略。
 
 ### 自定义 Webhook
 

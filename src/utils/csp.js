@@ -66,11 +66,13 @@ export function buildApiDomainsWithWs(rawApiDomains) {
 }
 
 export function buildCspHeader({ staticDomains = [], apiDomains = [] } = {}) {
+  const imgSources = ["'self'", TURNSTILE_DOMAIN, RAW_GITHUB_DOMAIN, ...staticDomains, 'data:'];
   return [
     buildDirective('default-src', ["'self'"]),
     buildDirective('script-src', ["'self'", "'unsafe-inline'", TURNSTILE_DOMAIN, INSIGHTS_DOMAIN, ...staticDomains]),
     buildDirective('style-src', ["'self'", "'unsafe-inline'", TURNSTILE_DOMAIN, FONTS_API_DOMAIN, ...staticDomains]),
-    buildDirective('img-src', ["'self'", TURNSTILE_DOMAIN, RAW_GITHUB_DOMAIN, ...staticDomains, 'data:']),
+    buildDirective('img-src', imgSources),
+    buildDirective('media-src', imgSources),
     buildDirective('font-src', ["'self'", TURNSTILE_DOMAIN, FONTS_STATIC_DOMAIN, ...staticDomains]),
     buildDirective('connect-src', ["'self'", TURNSTILE_DOMAIN, INSIGHTS_DOMAIN, RAW_GITHUB_DOMAIN, ...DEFAULT_CONNECT_DOMAINS, ...apiDomains]),
     buildDirective('frame-src', [TURNSTILE_DOMAIN]),

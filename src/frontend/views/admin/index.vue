@@ -659,11 +659,10 @@ const normalizeTgNotifySetting = (value) => {
   if (value === false || value === 'false' || value === undefined || value === null || value === '') return '0'
 
   const minutes = Number(value)
-  if (Number.isInteger(minutes) && (minutes === 0 || (minutes >= 2 && minutes <= 30))) {
-    return String(minutes)
-  }
-
-  return '0'
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 30) return '0'
+  if (minutes === 0) return '0'
+  // 最小 5 分钟：低于 5 的历史值（如 2、3、4）统一提升到 5
+  return String(Math.max(minutes, 5))
 }
 
 const isTgNotifyEnabled = (value) => normalizeTgNotifySetting(value) !== '0'
@@ -1007,7 +1006,7 @@ const toggleAdminPasswordChange = () => {
 }
 
 const { visibility: passwordVisible, toggle: togglePassword } = usePasswordVisibility([
-  'login', 'tgBotToken', 'tgChatId', 'notificationWebhookUrl', 'turnstileSecret', 'githubClientSecret', 'cloudflareToken', 'jwtSecret', 'password', 'confirmPassword'
+  'login', 'tgBotToken', 'tgChatId', 'notificationWebhookUrl', 'smtpPassword', 'turnstileSecret', 'githubClientSecret', 'cloudflareToken', 'jwtSecret', 'password', 'confirmPassword'
 ])
 
 const {
@@ -1628,6 +1627,10 @@ const saveSettings = async () => {
     const cspStaticValid = settingsPanelRef.value.validateCspField('csp_static')
     const cspApiValid = settingsPanelRef.value.validateCspField('csp_api')
     if (!cspStaticValid || !cspApiValid) {
+      return
+    }
+    if (!settingsPanelRef.value.validateSmtpFields()) {
+      validationError.value = trans.value.smtpConfigInvalid || 'SMTP configuration is incomplete, please check the SMTP settings'
       return
     }
   }
@@ -2547,6 +2550,9 @@ const queryD1Usage = async () => {
 
 const sendTestNotification = async () => {
   if (testNotificationLoading.value) return
+  if (settingsPanelRef.value && !settingsPanelRef.value.validateSmtpFields()) {
+    return
+  }
   testNotificationLoading.value = true
   try {
     const result = await adminApiForSite({
