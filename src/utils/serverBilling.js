@@ -170,7 +170,7 @@ function getBillingCycleOption(value) {
   return BILLING_CYCLES.find(item => item.value === normalized) || BILLING_CYCLES[0];
 }
 
-function isEnabledFlag(value) {
+export function isEnabledFlag(value) {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 

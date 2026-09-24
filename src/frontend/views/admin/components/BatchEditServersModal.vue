@@ -65,6 +65,9 @@
               <option v-for="day in 31" :key="day" :value="day">{{ day }}</option>
             </select>
           </BatchEditField>
+          <BatchEditField :enabled="enabled.traffic_alert_percent" :label="`${trans.trafficAlertPercent} (%)`" @toggle="toggleField('traffic_alert_percent', $event)">
+            <input type="number" v-model="form.traffic_alert_percent" class="form-input" :disabled="!enabled.traffic_alert_percent" min="0" max="100" step="1">
+          </BatchEditField>
           <BatchEditField :enabled="enabled.rx_correction" :label="`${trans.rxCorrection} (GB)`" @toggle="toggleField('rx_correction', $event)">
             <input type="number" v-model="form.rx_correction" class="form-input" :disabled="!enabled.rx_correction" min="0" step="0.1">
           </BatchEditField>

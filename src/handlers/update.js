@@ -1,5 +1,6 @@
 import { saveMetricsHistory } from '../database/schema.js';
-import { getServerDetail, clearServerDetailCache } from '../utils/cache.js';
+import { getServerDetail, clearServerDetailCache, patchServerDetailCache } from '../utils/cache.js';
+import { evaluateTrafficAlert } from '../services/notification.js';
 import {
   DISK_IO_FIELD_TO_COLUMN,
   DISK_IO_METRIC_FIELDS,
@@ -589,6 +590,10 @@ export async function handleUpdate(request, env, ctx) {
     // 加入批量队列，由后台定时任务统一推送到 DO
     queueBroadcastSamples(id, broadcastSamples);
     ctx.waitUntil(_ensureBatchFlush(env));
+    // 月流量阈值告警：复用已加载的 serverDetail 与刚入库的 historyMetrics，非阻塞后台执行
+    ctx.waitUntil(evaluateTrafficAlert(env, serverDetail, historyMetrics, {
+      patchCache: (serverId, value) => patchServerDetailCache(serverId, { traffic_alert_state: value })
+    }));
 
     const clientConfigSchema = normalizeAgentConfigSchemaVersion(request.headers.get(AGENT_CONFIG_SCHEMA_HEADER));
     if (!clientConfigSchema) {

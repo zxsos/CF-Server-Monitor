@@ -13,6 +13,7 @@
 // - Agent 上报连接使用标准 WebSocket API，避免高频指标消息计为 hibernation wakeup。
 
 import { saveMetricsHistory } from '../database/schema.js';
+import { evaluateTrafficAlert } from '../services/notification.js';
 import { ensureServerOptimization } from '../database/indexOptimization.js';
 import { getServerDetail, clearServerDetailCache } from '../utils/cache.js';
 import { getWssReportScheduleState, loadSiteSettings } from '../utils/settings.js';
@@ -1266,6 +1267,23 @@ export class MetricsBroadcaster {
         payload.timestamp,
         payload.agentVersion
       );
+      // 月流量阈值告警：写入成功后台非阻塞执行（waitUntil），不阻塞 WebSocket 消息循环
+      if (typeof this.state?.waitUntil === 'function') {
+        this.state.waitUntil((async () => {
+          try {
+            const trafficServerDetail = await this._getAgentServerDetail(serverId);
+            if (!trafficServerDetail) return;
+            await evaluateTrafficAlert(this.env, trafficServerDetail, metrics, {
+              patchCache: (id, value) => {
+                const entry = this.agentServerDetails.get(id);
+                if (entry && entry.data) entry.data.traffic_alert_state = value;
+              }
+            });
+          } catch (e) {
+            console.error('[traffic-alert] DO evaluate failed:', e);
+          }
+        })());
+      }
       const persistedAt = Date.now();
       state.lastD1WriteTs = persistedAt;
       const currentAttachment = ws.deserializeAttachment() || attachment;

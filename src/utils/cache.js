@@ -73,6 +73,13 @@ export function clearServerDetailCache() {
   serverDetailCache.clear();
 }
 
+// 按 id 就地打补丁更新已缓存的服务器详情字段（不创建条目、不清全表）
+// 用于运行时状态列（如 traffic_alert_state）写回后刷新缓存，避免 TTL 内读到旧值重复触发。
+export function patchServerDetailCache(id, fields) {
+  const entry = serverDetailCache.get(id);
+  if (entry && entry.data) Object.assign(entry.data, fields);
+}
+
 export async function getServerDetail(db, id, includeHidden = false) {
   const now = Date.now();
   const cached = serverDetailCache.get(id);

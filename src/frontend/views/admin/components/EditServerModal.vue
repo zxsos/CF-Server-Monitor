@@ -56,13 +56,8 @@
         </div>
 
         <div class="form-group flex-1">
-          <label class="form-label">{{ trans.autoRenewal }}</label>
-          <div class="checkbox-item no-margin">
-            <input type="checkbox" v-model="editForm.auto_renewal">
-            <label>
-              <b>{{ trans.enabled }}</b>
-            </label>
-          </div>
+          <label class="form-label">{{ trans.expirationDate }}</label>
+          <input type="date" name="edit_expire_date" autocomplete="off" v-model="editForm.expire_date" class="form-input" @click="openDatePicker">
         </div>
       </div>
 
@@ -81,10 +76,6 @@
           </select>
         </div>
         <div class="form-group flex-1">
-          <label class="form-label">{{ trans.expirationDate }}</label>
-          <input type="date" name="edit_expire_date" autocomplete="off" v-model="editForm.expire_date" class="form-input" @click="openDatePicker">
-        </div>
-        <div class="form-group flex-1">
           <label class="form-label">
             {{ trans.trafficResetDay }}
             <HelpTooltip :text="trans.trafficResetDayTip" />
@@ -93,6 +84,13 @@
             <option :value="0">0</option>
             <option v-for="day in 31" :key="day" :value="day">{{ day }}</option>
           </select>
+        </div>
+        <div class="form-group flex-1">
+          <label class="form-label">
+            {{ trans.trafficAlertPercent }} (%)
+            <HelpTooltip :text="trans.trafficAlertPercentTip" />
+          </label>
+          <input type="number" name="edit_traffic_alert_percent" autocomplete="off" v-model="editForm.traffic_alert_percent" class="form-input" min="0" max="100" step="1">
         </div>
       </div>
 
@@ -225,6 +223,15 @@
         </div>
       </div>
       <div class="form-row">
+        <div class="form-group flex-1">
+          <div class="checkbox-item no-margin">
+            <input type="checkbox" v-model="editForm.auto_renewal">
+            <label>
+              <b>{{ trans.autoRenewal }}</b>
+            </label>
+          </div>
+        </div>
+
         <div class="form-group">
           <div class="checkbox-item no-margin">
             <input type="checkbox" :checked="editForm.auto_update" @change="handleAutoUpdateChange">

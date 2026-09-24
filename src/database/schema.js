@@ -88,6 +88,8 @@ export async function initDatabase(db) {
           expire_date TEXT DEFAULT '',
           traffic_limit TEXT DEFAULT '',
           traffic_calc_type TEXT DEFAULT 'total',
+          traffic_alert_percent INTEGER DEFAULT NULL,
+          traffic_alert_state TEXT,
           "interface" TEXT DEFAULT '',
           reset_day INTEGER DEFAULT 1,
           collect_interval INTEGER DEFAULT 0,

@@ -271,36 +271,6 @@
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group flex-1">
-            <label class="form-label">
-              {{ trans.notificationTimezone || 'Notification Timezone' }}
-              <HelpTooltip :text="trans.notificationTimezoneTip || 'Used only for notification output times and expiration reminder schedule.'" />
-            </label>
-            <select v-model="selectedNotificationTimezone" class="form-select">
-              <option v-for="timezone in commonNotificationTimezones" :key="timezone" :value="timezone">{{ timezone }}</option>
-              <option :value="CUSTOM_NOTIFICATION_TIMEZONE_VALUE">{{ trans.custom || 'Custom' }}</option>
-            </select>
-            <input
-              v-if="showCustomNotificationTimezone"
-              type="text"
-              v-model.trim="settings.notification_timezone"
-              class="form-input mt-2"
-              placeholder="Asia/Shanghai"
-            >
-          </div>
-
-          <div class="form-group flex-1">
-            <label class="form-label">
-              {{ trans.expireNotificationTime || 'Expiration Notification Time' }}
-              <HelpTooltip :text="trans.expireNotificationTimeTip || 'Check expiration and send reminders daily at this hour in the notification timezone. Use 0-23.'" />
-            </label>
-            <select v-model="settings.expire_notification_time" class="form-select">
-              <option v-for="hour in expireNotificationHourOptions" :key="hour" :value="hour">{{ hour }}</option>
-            </select>
-          </div>
-        </div>
-
         <div v-if="notificationChannel === 'builtin'" class="form-row">
           <div class="form-group flex-1">
             <label class="form-label">{{ trans.telegramToken }}</label>
@@ -459,6 +429,44 @@
                 placeholder='{"title":"{{emoji}} {{event}}","content":"{{notification}}"}'
               ></textarea>
             </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label class="form-label">
+              {{ trans.notificationTimezone || 'Notification Timezone' }}
+              <HelpTooltip :text="trans.notificationTimezoneTip || 'Used only for notification output times and expiration reminder schedule.'" />
+            </label>
+            <select v-model="selectedNotificationTimezone" class="form-select">
+              <option v-for="timezone in commonNotificationTimezones" :key="timezone" :value="timezone">{{ timezone }}</option>
+              <option :value="CUSTOM_NOTIFICATION_TIMEZONE_VALUE">{{ trans.custom || 'Custom' }}</option>
+            </select>
+            <input
+              v-if="showCustomNotificationTimezone"
+              type="text"
+              v-model.trim="settings.notification_timezone"
+              class="form-input mt-2"
+              placeholder="Asia/Shanghai"
+            >
+          </div>
+
+          <div class="form-group flex-1">
+            <label class="form-label">
+              {{ trans.expireNotificationTime || 'Expiration Notification Time' }}
+              <HelpTooltip :text="trans.expireNotificationTimeTip || 'Check expiration and send reminders daily at this hour in the notification timezone. Use 0-23.'" />
+            </label>
+            <select v-model="settings.expire_notification_time" class="form-select">
+              <option v-for="hour in expireNotificationHourOptions" :key="hour" :value="hour">{{ hour }}</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label class="form-label">
+              {{ trans.trafficAlertThreshold }} (%)
+              <HelpTooltip :text="trans.trafficAlertThresholdTip" />
+            </label>
+            <input type="number" v-model.number="settings.traffic_alert_threshold" class="form-input" min="0" max="100" step="1" placeholder="0">
           </div>
         </div>
 

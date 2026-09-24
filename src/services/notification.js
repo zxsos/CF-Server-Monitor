@@ -17,7 +17,14 @@ import {
   normalizeNotificationWebhookMethod,
   debug
 } from '../utils/settings.js';
-import { detectBillingCycle, normalizeBillingCycle, renewExpireDateIfNeeded } from '../utils/serverBilling.js';
+import {
+  GB,
+  getTrafficUsageBytes,
+  normalizePct,
+  normalizePctOrNull,
+  normalizeTrafficLimitGb
+} from '../utils/traffic.js';
+import { detectBillingCycle, isEnabledFlag, normalizeBillingCycle, renewExpireDateIfNeeded } from '../utils/serverBilling.js';
 import {
   NOTIFICATION_MAX_RETRIES,
   NOTIFICATION_RETRY_DELAY_MS,
@@ -638,6 +645,86 @@ function hasNotificationTarget(settings) {
   return String(settings?.tg_bot_token || '').trim().length > 0;
 }
 
+// ===== 月流量阈值告警（上报路径触发，账期重置=数值回落，状态={u,th,lim}）=====
+const TRAFFIC_ALERT_STATE_KEY = 'traffic_alert_state';
+const TRAFFIC_ALERT_RESET_FACTOR = 0.5;
+
+function parseTrafficAlertState(raw) {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw);
+    if (o && Number.isFinite(o.u) && o.u > 0) {
+      return { u: Math.round(o.u), th: normalizePct(o.th), lim: normalizeTrafficLimitGb(o.lim) };
+    }
+  } catch (_) {}
+  return null;
+}
+
+// hooks.patchCache?.(serverId, valueOrNull) —— 缓存实现由调用方注入，本函数不 import 任何 cache 模块
+export async function evaluateTrafficAlert(env, server, metrics, hooks = {}) {
+  try {
+    if (!env?.DB || !server || !metrics) return;
+
+    const limit = normalizeTrafficLimitGb(server.traffic_limit);
+    if (limit <= 0) return; // 未设限额：不监控
+
+    const settings = await loadSiteSettings(env.DB);
+    const globalPct = normalizePct(settings?.traffic_alert_threshold);
+    // 逐台阈值三态：null/未设置 → 跟随全局；数字（含 0）→ 覆盖，0 = 显式关闭该服务器告警
+    const pctServer = normalizePctOrNull(server.traffic_alert_percent);
+    const effectivePct = pctServer === null ? globalPct : pctServer;
+    if (effectivePct <= 0) return;                 // 阈值关闭 / 该服务器显式关闭
+    if (!hasNotificationTarget(settings)) return;  // 未配置通知渠道：不发也不写
+
+    const used = Math.round(getTrafficUsageBytes(
+      metrics.net_rx_monthly,
+      metrics.net_tx_monthly,
+      server.traffic_calc_type
+    ));
+    const limitBytes = limit * GB;
+    const percent = (used / limitBytes) * 100;
+
+    const oldStr = server[TRAFFIC_ALERT_STATE_KEY] == null ? '' : String(server[TRAFFIC_ALERT_STATE_KEY]);
+    const state = parseTrafficAlertState(server[TRAFFIC_ALERT_STATE_KEY]);
+
+    if (state) {
+      // ① 回落=新账期/重装/大校正 → 持久清零（不可只在内存即时重算）
+      if (used < state.u * TRAFFIC_ALERT_RESET_FACTOR) {
+        const { meta } = await env.DB.prepare(
+          `UPDATE servers SET traffic_alert_state = NULL WHERE id = ? AND COALESCE(traffic_alert_state,'') = ?`
+        ).bind(server.id, oldStr).run();
+        if (meta && meta.changes > 0) hooks.patchCache?.(server.id, null);
+        return;
+      }
+      // ② 规则签名一致且未回落 → 同账期已发，抑制
+      if (state.th === effectivePct && state.lim === limit) return;
+      // ③ th/lim 变 → 重新可发，继续
+    }
+
+    if (percent < effectivePct) return; // 未达阈值
+
+    // 先发后写
+    const serverName = server.name || server.id;
+    const msg = `${serverName}  本月已用 ${(used / GB).toFixed(1)} GB / 限额 ${limit} GB（${percent.toFixed(1)}% ≥ ${effectivePct}%）`;
+    const err = await sendNotification(settings, msg, {
+      event: '月流量告警',
+      emoji: '📈',
+      clients: [serverName],
+      count: 1,
+      message: msg
+    });
+    if (err) return; // 失败：不写，下次上报重试
+
+    const newStr = JSON.stringify({ u: used, th: effectivePct, lim: limit });
+    const { meta } = await env.DB.prepare(
+      `UPDATE servers SET traffic_alert_state = ? WHERE id = ? AND COALESCE(traffic_alert_state,'') = ?`
+    ).bind(newStr, server.id, oldStr).run();
+    if (meta && meta.changes > 0) hooks.patchCache?.(server.id, newStr);
+  } catch (e) {
+    console.error('[traffic-alert] evaluate failed:', e);
+  }
+}
+
 const SMTP_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // 信封地址防注入：剥离 CR/LF 并校验邮箱格式（subject/body 已有 sanitize，信封同样需要）
 function normalizeSmtpAddress(value) {
@@ -1220,23 +1307,27 @@ export async function checkExpiringServers(db, options = {}) {
     const expiringServers = [];
     const reminderDays = getExpireReminderDays(siteSettings.expire_reminder);
     const shouldNotify = reminderDays > 0 && hasNotificationTarget(siteSettings);
-    let hasRenewedServers = false;
+    const renewedServers = [];
     const currentDateSerial = getZonedDateSerial(now, siteSettings.notification_timezone);
 
     for (const s of allServers) {
       if (!s.expire_date) continue;
 
       const billingCycle = normalizeBillingCycle(detectBillingCycle(s.price) || s.billing_cycle);
-      const renewal = renewExpireDateIfNeeded(s.expire_date, billingCycle, s.auto_renewal, now, 1);
+      // 续费时机 = 到期日 - min(提醒天数, 5)，最长提前 5 天
+      const renewal = renewExpireDateIfNeeded(s.expire_date, billingCycle, s.auto_renewal, now, Math.min(reminderDays, 5));
       if (renewal.renewed) {
         await db.prepare(
           'UPDATE servers SET expire_date = ?, billing_cycle = ? WHERE id = ?'
         ).bind(renewal.expire_date, billingCycle, s.id).run();
         s.expire_date = renewal.expire_date;
         s.billing_cycle = billingCycle;
-        hasRenewedServers = true;
+        renewedServers.push({ name: s.name, expire_date: renewal.expire_date });
         debug(`[Cron] 服务器 ${s.name} 已自动续费，到期日期更新为 ${s.expire_date}`);
       }
+
+      // 勾选自动续费的节点只走「续费成功」提醒，不计入到期提醒
+      if (isEnabledFlag(s.auto_renewal)) continue;
 
       if (!shouldNotify) continue;
 
@@ -1252,21 +1343,42 @@ export async function checkExpiringServers(db, options = {}) {
       }
     }
 
-    if (hasRenewedServers) {
+    if (renewedServers.length > 0) {
       clearServersListCache();
+
+      // 续费成功提醒：与「到期提醒」开关解耦，只要配置了通知渠道就发送
+      if (hasNotificationTarget(siteSettings)) {
+        const renewalList = renewedServers.map(s => `${s.name}  新到期 ${s.expire_date}`).join('\n');
+        debug(`[Cron] 发送自动续费成功通知: ${renewalList}`);
+        try {
+          await sendNotification(siteSettings, renewalList, {
+            event: '服务器自动续费成功',
+            emoji: '✅',
+            clients: renewedServers.map(s => s.name),
+            count: renewedServers.length,
+            message: renewalList
+          });
+        } catch (e) {
+          console.error('自动续费成功通知发送失败:', e);
+        }
+      }
     }
 
     if (expiringServers.length > 0) {
       const serverList = expiringServers.map(s => `${s.name}  剩余${s.days}天  ${s.expire_date}`).join('\n');
       const msg = serverList;
       debug(`[Cron] 发送到期提醒通知: ${msg}`);
-      await sendNotification(siteSettings, msg, {
-        event: '服务器到期提醒',
-        emoji: '⚠️',
-        clients: expiringServers.map(s => s.name),
-        count: expiringServers.length,
-        message: serverList
-      });
+      try {
+        await sendNotification(siteSettings, msg, {
+          event: '服务器到期提醒',
+          emoji: '⚠️',
+          clients: expiringServers.map(s => s.name),
+          count: expiringServers.length,
+          message: serverList
+        });
+      } catch (e) {
+        console.error('服务器到期提醒通知发送失败:', e);
+      }
     }
     return true;
   } catch (e) {
