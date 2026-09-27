@@ -20,12 +20,10 @@ test('long-history point settings only accept supported values', () => {
   assert.equal(normalizeLongHistoryPoints(undefined), String(DEFAULT_LONG_HISTORY_POINTS));
 });
 
-test('sparse sampling is limited to long id-range queries', () => {
-  assert.equal(shouldUseSparseHistorySampling(1, true, false, false), false);
-  assert.equal(shouldUseSparseHistorySampling(6, true, false, false), true);
-  assert.equal(shouldUseSparseHistorySampling(6, false, false, false), false);
-  assert.equal(shouldUseSparseHistorySampling(168, true, true, false), false);
-  assert.equal(shouldUseSparseHistorySampling(168, true, true, true), true);
+test('sparse sampling is limited to long queries', () => {
+  assert.equal(shouldUseSparseHistorySampling(1), false);
+  assert.equal(shouldUseSparseHistorySampling(6), true);
+  assert.equal(shouldUseSparseHistorySampling(168), true);
 });
 
 test('single-table sparse query uses bounded primary-key seeks', () => {

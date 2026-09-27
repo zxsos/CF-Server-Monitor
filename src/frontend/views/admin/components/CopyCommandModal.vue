@@ -14,9 +14,26 @@
             <option value="unix">OpenWrt/Alpine/Synology DSM/FreeBSD</option>
             <option value="mac">macOS</option>
             <option value="windows">Windows</option>
+            <option value="docker">Docker</option>
           </select>
         </div>
 
+        <div class="form-group flex-1">
+          <label class="form-label">
+            Agent {{ trans.version }}
+            <HelpTooltip :text="targetOs === 'docker' ? trans.dockerVersionTip : trans.installVersionTip" />
+          </label>
+          <input
+            type="text"
+            :value="installVersion"
+            class="form-input"
+            :placeholder="targetOs === 'docker' ? 'latest' : trans.installVersionPlaceholder"
+            @input="$emit('update:install-version', $event.target.value)"
+          >
+        </div>
+      </div>
+
+      <div v-if="targetOs !== 'docker'" class="form-row">
         <div v-if="targetOs === 'linux'" class="form-group flex-1">
           <label class="form-label">
             {{ trans.installMode }}
@@ -27,9 +44,7 @@
             <option value="cfsm-user">{{ trans.installModeCfsmUser }}</option>
           </select>
         </div>
-      </div>
 
-      <div class="form-row">
         <div class="form-group flex-1">
           <label class="form-label">
             {{ trans.ghProxy }}
@@ -46,20 +61,6 @@
             class="form-input mt-2"
             :placeholder="trans.ghProxyPlaceholder"
             @input="$emit('update:install-gh-proxy', $event.target.value)"
-          >
-        </div>
-
-        <div class="form-group flex-1">
-          <label class="form-label">
-            Agent {{ trans.version }}
-            <HelpTooltip :text="trans.installVersionTip" />
-          </label>
-          <input
-            type="text"
-            :value="installVersion"
-            class="form-input"
-            :placeholder="trans.installVersionPlaceholder"
-            @input="$emit('update:install-version', $event.target.value)"
           >
         </div>
       </div>

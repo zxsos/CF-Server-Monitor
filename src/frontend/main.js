@@ -4,7 +4,7 @@ import router from './router'
 import './styles/main.css'
 import './styles/light.css'
 import { applyDefaultLanguage, currentLang, resolveLanguagePreference, translations } from './utils/i18n'
-import { http } from './utils/http'
+import { http, DEFAULT_REQUEST_TIMEOUT_MS } from './utils/http'
 import { initConfig, hasMultipleApiBases } from './utils/config'
 import { LAST_AGENT_VERSION, LAST_WORKERS_VERSION, VERSION, normalizeLiveSocketTimeoutMinutes } from './utils/api'
 import { resolveDisplayMode } from './utils/displayMode'
@@ -69,7 +69,15 @@ const applyStartupThemeOptions = (config) => {
 
 async function fetchConfig() {
   try {
-    const result = await http.get('/api/config', { includeAuth: true, includeTurnstile: true })
+    let result = await http.get('/api/config', { includeAuth: true, includeTurnstile: true, autoRedirect: false, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS })
+
+    // 超时或 403：清掉可疑的 Turnstile 缓存，不带 header 重试走 bypass 路径
+    if (result.error && (result.timeout || result.status === 403)) {
+      localStorage.removeItem('turnstile_token')
+      localStorage.removeItem('turnstile_verified')
+      result = await http.get('/api/config', { includeAuth: true, includeTurnstile: false, includeTurnstileVerified: false, autoRedirect: false, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS })
+    }
+
     if (result.error) {
       return {
         turnstile_enabled: false,
@@ -185,7 +193,7 @@ async function verifyTurnstileByIndex(siteKey, apiIndex = 0) {
       callback: async (token) => {
         setTurnstileToken(token)
         try {
-          const result = await http.getByIndex('/api/config', apiIndex, { includeAuth: false, includeTurnstile: true, autoRedirect: false })
+          const result = await http.getByIndex('/api/config', apiIndex, { includeAuth: false, includeTurnstile: true, autoRedirect: false, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS })
           if (!result.error) {
             resolve(result.data && result.data.verified === true)
           } else {

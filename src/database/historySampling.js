@@ -1,14 +1,7 @@
 const SPARSE_HISTORY_MIN_HOURS = 1;
 
-export function shouldUseSparseHistorySampling(
-  queryHours,
-  currentUsesIdRange,
-  oldTableExists,
-  oldUsesIdRange
-) {
-  return queryHours > SPARSE_HISTORY_MIN_HOURS
-    && currentUsesIdRange
-    && (!oldTableExists || oldUsesIdRange);
+export function shouldUseSparseHistorySampling(queryHours) {
+  return queryHours > SPARSE_HISTORY_MIN_HOURS;
 }
 
 function buildSampleJsonExpression(tableName, jsonColumns, sampleOrder) {

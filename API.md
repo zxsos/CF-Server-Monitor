@@ -1737,7 +1737,6 @@ UUID 缺失或格式非法时返回 `400 { "error": "invalidServerId", "code": 4
   "success": true,
   "message": "databaseUpgradeSuccess",
   "results": [
-    { "name": "metrics_history 索引检查", "success": true, "created": false, "message": "..." },
     { "name": "servers 表列更新", "success": true, "added": 5 },
     { "name": "servers 表多余字段清理", "success": true, "cleaned": 30, "message": "..." },
     { "name": "metrics_history 表列更新", "success": true, "added": 14 },
@@ -1747,7 +1746,7 @@ UUID 缺失或格式非法时返回 `400 { "error": "invalidServerId", "code": 4
 }
 ```
 
-~~升级步骤包括 `metrics_history load -> load_avg` 迁移和 `metrics_history` 写入优化。~~ **2026-07-26 修订**：当前顺序为历史表索引检查、补齐 `servers` 列、清理 `servers` 多余列、补齐 `metrics_history` 列、清理废弃设置、删除弃用的 `metrics_aggregated` 表。
+~~升级步骤包括 `metrics_history load -> load_avg` 迁移和 `metrics_history` 写入优化。~~ **修订**：当前顺序为补齐 `servers` 列、清理 `servers` 多余列、补齐 `metrics_history` 列、清理废弃设置、删除弃用的 `metrics_aggregated` 表。历史查询已统一为结构化主键 id 范围模式，不再创建 `(server_id, timestamp)` 二级索引。
 
 ~~任一步骤抛错时返回 HTTP 500。~~ **2026-07-26 修订**：升级函数会捕获未被子步骤处理的错误并返回 `{ "success": false, "message": "databaseUpgradeFailed", "error": "...", "results": [...] }`；路由仍使用成功响应包装，因此通常为 HTTP `200`。各子步骤本身也会捕获错误，所以顶层 `success: true` 时 `results[]` 仍可能含 `success: false`，调用方必须同时检查两层状态。
 
@@ -1916,7 +1915,6 @@ UUID 缺失或格式非法时返回 `400 { "error": "invalidServerId", "code": 4
   expire_reminder: string, // '0'-'365'; 0 disables expiration reminders
   notification_timezone: string, // IANA timezone；默认 UTC
   expire_notification_time: string, // '0'-'23'；默认 12
-  history_id_optimized: 'true' | 'false',
   servers_optimized: 'true' | 'false'
 }
 ```

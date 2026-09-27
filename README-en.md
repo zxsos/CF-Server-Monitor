@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta7-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta8-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -23,7 +23,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
 
 CF-Server-Monitor is a server monitoring system designed for Cloudflare Workers. Each server runs an Agent that reports metrics to a Worker. The Worker stores data in D1 and pushes realtime updates through Durable Objects and WebSocket, providing free-hosted, low-maintenance realtime monitoring.
 
-It supports mainstream Linux distributions, Alpine Linux, OpenWrt, macOS, Synology DSM, Feiniu fnOS, Windows, and similar systems.
+It supports mainstream Linux distributions, Alpine Linux, OpenWrt, macOS, Synology DSM, Feiniu fnOS, Windows, and similar systems, and provides Docker image deployment.
 
 Security is stricter by design: the Agent only reports metrics one way, does not provide WebSSH, remote command delivery, or a controller channel, and can run as a non-root user to reduce blast radius.
 
@@ -67,7 +67,7 @@ Compared with traditional controller-style monitoring tools, CF-Server-Monitor i
 | Network quality | Latency and packet loss tracking for CT, CU, CM, and BGP nodes; when three-net details are enabled, the dashboard samples up to 20 real points from the last 2 hours of D1 history and caches them for 5 minutes |
 | Dashboard views | Bar chart, ring chart, table, and map views for desktop and mobile |
 | Admin panel | Server CRUD, drag sorting, hidden servers, import/export, batch delete, database maintenance |
-| Cross-platform Agent | Mainstream Linux, Alpine Linux, OpenWrt, Synology DSM, Feiniu fnOS, FreeBSD, macOS, Windows; Go Agent by default, Shell/PowerShell still available |
+| Cross-platform Agent | Mainstream Linux, Alpine Linux, OpenWrt, Synology DSM, Feiniu fnOS, FreeBSD, macOS, Windows, plus Docker image deployment; Go Agent by default, Shell/PowerShell still available |
 | Realtime push | Durable Objects + WebSocket refresh the UI immediately after Agent reports |
 | Alerts | Offline alerts, recovery notices, expiration reminders, resource load rules |
 | Multi-language | Built-in Chinese and English frontend switch; Chinese and English documentation |
@@ -99,7 +99,7 @@ Core flow:
 
 Recent changes:
 
-- `2.8.6`: Added GitHub login support, WSS frontend subscription 250ms batch report, Add an SMTP notification channel, Add monthly traffic threshold alert
+- `2.8.6`: Added GitHub login, WSS frontend subscription with 250ms batch reporting, added SMTP notification channel, added monthly traffic threshold alert, removed legacy database compatibility, added Docker installation method.
 - `2.8.5`: Added custom Ping node names, ICMP mode, optimized WSS response logic, API interface optimization, and optimized frontend. Also added 4 default Ping nodes.
 - `2.8.4`: Added Agent WSS reporting and active hours. Agents use POST outside selected hours to reduce Do duration, and this requires Agent `v1.0.10+`. Also added account Do usage display with optimized Do broadcast requests when no frontend subscription exists to reduce idle quota consumption, added custom Webhook channel in notification settings, and added frontend WSS timeout configuration.
 - `2.8.3`: Added disk IO metrics, switched the default Agent to Go, and added realtime latency / packet-loss windows.
@@ -228,6 +228,23 @@ loginctl enable-linger username
 ```
 
 When uninstalling, select the user that originally installed the Agent. For OpenWrt, Alpine/OpenRC, Synology DSM, and other systems without `systemd --user`, use the matching system command.
+
+### Docker Deployment
+
+The admin copy-install dialog lets you choose Docker as the target system, generating a container command like the one below (server ID, secret, and Worker URL are filled in automatically for the current server; the image tag defaults to `latest` and can be customized in the Agent version field):
+
+```bash
+docker run -d --name cf-probe --restart=unless-stopped --network=host \
+  -v cf-probe-data:/data \
+  -e SERVER_ID=<server-id> -e SECRET='<API_SECRET>' -e WORKER_URL=https://<your-worker>/update \
+  ghcr.io/huilang-me/cfsm-agent:latest
+```
+
+Collect interval, report interval, ping nodes, network interface, traffic reset day, and upload/download correction are pulled dynamically by the Agent from the admin panel via `SERVER_ID`, so they do not need to be repeated in the command; changing the image tag upgrades or rolls back to that version. To remove the container:
+
+```bash
+docker rm -f cf-probe && docker volume rm cf-probe-data
+```
 
 ## Configuration
 

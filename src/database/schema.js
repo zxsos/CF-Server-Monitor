@@ -1,8 +1,8 @@
 import { getAllServers, getLatestMetricsCache, setLatestMetricsCache, getMetricsHistoryCache, setMetricsHistoryCache, getCacheDuration, clearAllCaches } from '../utils/cache.js';
-import { saveSiteOptions, debug, getSettingByKey, normalizeLongHistoryPoints, DEFAULT_LONG_HISTORY_POINTS } from '../utils/settings.js';
+import { saveSiteOptions, debug, normalizeLongHistoryPoints, DEFAULT_LONG_HISTORY_POINTS } from '../utils/settings.js';
 import { attachDiskMetricsObject, flattenDiskMetrics, isDisabledProbeMetric, normalizeProbeMetricRow } from '../utils/metrics.js';
 import { ensureServerOptimization, buildHistoryId, getServerHistoryInfo, getHistoryIdRange } from './indexOptimization.js';
-import { addHistoryColumns, ensureHistoryIndex, isHistoryOptimized } from './updateDatabase.js';
+import { addHistoryColumns } from './updateDatabase.js';
 import {
   buildSparseHistoryQuery,
   shouldUseSparseHistorySampling
@@ -25,8 +25,6 @@ const LOSS_AGG_COLUMNS = new Set(['loss_ct', 'loss_cu', 'loss_cm', 'loss_bd', 'l
 const DEFAULT_HISTORY_MAX_POINTS = 160;
 const LATENCY_NODE_FIELDS = ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'node_4'];
 const DASHBOARD_LATENCY_COLUMNS = LATENCY_NODE_FIELDS
-  .flatMap(field => [`ping_${field}`, `loss_${field}`]);
-const LEGACY_DASHBOARD_LATENCY_COLUMNS = ['ct', 'cu', 'cm', 'bd']
   .flatMap(field => [`ping_${field}`, `loss_${field}`]);
 const dashboardLatencyHistoryCache = new Map();
 
@@ -65,7 +63,6 @@ export async function initDatabase(db) {
         )
       `).run();
       await saveSiteOptions(db, { servers_optimized: 'true' });
-      await saveSiteOptions(db, { history_id_optimized: 'true' });
     }
 
     // 判断servers表是否存在
@@ -120,15 +117,8 @@ export async function initDatabase(db) {
       await ensureServerOptimization(db);
     }
 
-    // 判断metrics_history表是否存在
-    const historyTableExists = await db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='metrics_history'
-    `).first();
-    if (!historyTableExists) {
-      await db.prepare(createHistoryTableSql('metrics_history')).run();
-    }else{
-      await ensureHistoryIndex(db);
-    }
+    // 确保 metrics_history 表存在（主键 id 已编码分区与时间，无需二级索引）
+    await db.prepare(createHistoryTableSql('metrics_history')).run();
 
     debug('✅ 数据库初始化完成');
     dbInitialized = true;
@@ -151,8 +141,6 @@ export async function clearHistory(db) {
     
     await initDatabase(db);
 
-    await saveSiteOptions(db, { history_id_optimized: 'true' });
-
     await clearAllCaches(db);
     clearDashboardLatencyHistoryCache();
     
@@ -172,35 +160,11 @@ export async function clearHistory(db) {
   }
 }
 
-async function hasHistoryServerTimeIndex(db, tableName) {
-  const index = await db.prepare(`
-    SELECT name
-    FROM sqlite_master
-    WHERE type = 'index'
-      AND tbl_name = ?
-      AND sql IS NOT NULL
-      AND LOWER(sql) LIKE '%server_id%'
-      AND LOWER(sql) LIKE '%timestamp%'
-    LIMIT 1
-  `).bind(tableName).first();
-
-  return !!index;
-}
-
-function buildHistorySourceQuery(tableName, useIdRange, columns) {
-  if (useIdRange) {
-    return `
-      SELECT timestamp, ${columns} FROM ${tableName}
-      WHERE id >= ?
-        AND id <= ?
-    `;
-  }
-
+function buildHistorySourceQuery(tableName, columns) {
   return `
     SELECT timestamp, ${columns} FROM ${tableName}
-    WHERE server_id = ?
-      AND typeof(timestamp) = 'integer'
-      AND timestamp >= ?
+    WHERE id >= ?
+      AND id <= ?
   `;
 }
 
@@ -242,24 +206,10 @@ export async function getMetricsHistory(
     `SELECT name FROM sqlite_master WHERE type='table' AND name='metrics_history_old'`
   ).first();
 
-  const history_id_optimized = await getSettingByKey(db, 'history_id_optimized', true);
-  const currentHasServerTimeIndex = history_id_optimized
-    ? false
-    : await hasHistoryServerTimeIndex(db, 'metrics_history');
-  const currentUsesIdRange = history_id_optimized || !currentHasServerTimeIndex;
-  const oldUsesIdRange = oldTableExists
-    ? history_id_optimized || !await hasHistoryServerTimeIndex(db, 'metrics_history_old')
-    : false;
-  const needsIdRange = currentUsesIdRange || oldUsesIdRange;
-
-  let idRange = null;
-  if (needsIdRange) {
-    if (!historyInfo.partitionId) {
-      throw new Error('Invalid history partition id');
-    }
-
-    idRange = getHistoryIdRange(historyInfo.partitionId, queryStart);
+  if (!historyInfo.partitionId) {
+    throw new Error('Invalid history partition id');
   }
+  const idRange = getHistoryIdRange(historyInfo.partitionId, queryStart);
 
   const columnList = columns.split(',').map(c => c.trim()).filter(c => c && c !== 'timestamp');
   const sourceColumns = columnList.join(', ');
@@ -271,12 +221,7 @@ export async function getMetricsHistory(
     LOSS_AGG_COLUMNS.has(col) ? `${col}_bucket_max AS ${col}` : col
   );
 
-  const useSparseSampling = shouldUseSparseHistorySampling(
-    queryHours,
-    currentUsesIdRange,
-    oldTableExists,
-    oldUsesIdRange
-  );
+  const useSparseSampling = shouldUseSparseHistorySampling(queryHours);
   const sparseQueryEnd = Math.floor(now / 1000) * 1000 + 1000;
   const maxPoints = queryHours > 1
     ? configuredLongHistoryPoints
@@ -331,21 +276,13 @@ export async function getMetricsHistory(
     const sourceQueries = [];
     const bindValues = [];
 
-    sourceQueries.push(buildHistorySourceQuery('metrics_history', currentUsesIdRange, sourceColumns));
-    if (currentUsesIdRange) {
-      bindValues.push(idRange.startId, idRange.endId);
-    } else {
-      bindValues.push(serverId, queryStart);
-    }
+    sourceQueries.push(buildHistorySourceQuery('metrics_history', sourceColumns));
+    bindValues.push(idRange.startId, idRange.endId);
 
     if (oldTableExists) {
       debug('[History] 跨周查询，合并 metrics_history 和 metrics_history_old');
-      sourceQueries.push(buildHistorySourceQuery('metrics_history_old', oldUsesIdRange, sourceColumns));
-      if (oldUsesIdRange) {
-        bindValues.push(idRange.startId, idRange.endId);
-      } else {
-        bindValues.push(serverId, queryStart);
-      }
+      sourceQueries.push(buildHistorySourceQuery('metrics_history_old', sourceColumns));
+      bindValues.push(idRange.startId, idRange.endId);
     }
 
     bindValues.push(intervalMs);
@@ -541,14 +478,7 @@ export async function getDashboardLatencyHistory(db, servers, options = {}) {
         return db.prepare(sparseQuery.sql).bind(...sparseQuery.bindValues).all();
       };
 
-      let rawResult;
-      try {
-        rawResult = await querySparseHistory(columns);
-      } catch (error) {
-        // Existing deployments may serve history before the new probe columns are migrated.
-        if (!/no such column/i.test(String(error?.message || error))) throw error;
-        rawResult = await querySparseHistory(LEGACY_DASHBOARD_LATENCY_COLUMNS.join(', '));
-      }
+      const rawResult = await querySparseHistory(columns);
       const window = normalizeDashboardLatencyWindow(rawResult.results, { queryStart, intervalMs, points });
       result.set(serverId, window);
       if (useCache) {
@@ -579,17 +509,6 @@ export async function getDashboardLatencyHistory(db, servers, options = {}) {
 export async function weeklyCleanup(db) {
   try {
     debug('[Cleanup] 开始执行表轮换操作...');
-    
-    // 判断metrics_history有无索引
-    const index = await db.prepare(
-      `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='metrics_history'`
-    ).first();
-    if(!index){
-      await saveSiteOptions(db, { history_id_optimized: 'true' });
-      debug('✅ 切换到优化模式');
-    }else{
-      debug('✅ 继续兼容模式');
-    }
     
     // 1. 删除旧的 metrics_history_old 表（如果存在）
     await db.prepare(`DROP TABLE IF EXISTS metrics_history_old`).run();
@@ -733,25 +652,17 @@ export async function getLatestMetrics(db, serverId, server = null) {
       throw new Error('Invalid history partition id');
     }
 
-    const useIdFilter = await isHistoryOptimized(db);
-
     const rangeStart = historyInfo.startTimestamp > 0 ? historyInfo.startTimestamp : null;
     const { startId, endId } = getHistoryIdRange(historyInfo.partitionId, rangeStart);
     debug(`Server ${serverId} history_id_range: ${startId} - ${endId}`);
   
-    const result = useIdFilter ? await db.prepare(`
+    const result = await db.prepare(`
       SELECT * FROM metrics_history
       WHERE id >= ?
         AND id <= ?
       ORDER BY id DESC
       LIMIT 1
-    `).bind(startId, endId).first()
-    :await db.prepare(`
-      SELECT * FROM metrics_history
-      WHERE server_id = ?
-      ORDER BY timestamp DESC
-      LIMIT 1
-    `).bind(serverId).first();
+    `).bind(startId, endId).first();
     return result ? normalizeProbeMetricRow(result) : null;
   } catch (e) {
     console.error('获取最新指标数据失败:', e);
@@ -765,9 +676,6 @@ export async function getLatestMetricsForAllServers(db) {
   if (cacheInfo.cache && now - cacheInfo.time < cacheInfo.ttl) {
     return cacheInfo.cache;
   }
-
-  // 确保 metrics_history 表有 idx_history_server_time 索引
-  await ensureHistoryIndex(db);
 
   try {
     const servers = await getAllServers(db);

@@ -29,7 +29,15 @@ async function createHistoryTable(db) {
       loss_ct INTEGER,
       loss_cu INTEGER,
       loss_cm INTEGER,
-      loss_bd INTEGER
+      loss_bd INTEGER,
+      ping_node_1 INTEGER DEFAULT 0,
+      ping_node_2 INTEGER DEFAULT 0,
+      ping_node_3 INTEGER DEFAULT 0,
+      ping_node_4 INTEGER DEFAULT 0,
+      loss_node_1 INTEGER DEFAULT NULL,
+      loss_node_2 INTEGER DEFAULT NULL,
+      loss_node_3 INTEGER DEFAULT NULL,
+      loss_node_4 INTEGER DEFAULT NULL
     )
   `).run();
 }

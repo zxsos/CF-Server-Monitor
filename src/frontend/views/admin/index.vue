@@ -1994,6 +1994,16 @@ const getCustomInstallCommand = () => {
     const ghUrl = buildGhRawUrl(proxy, '/huilang-me/cfsm-agent/main/install.ps1')
     return `$script = "$env:TEMP\\install-cf-probe.ps1"; Invoke-WebRequest -Uri ${quotePowerShellArg(ghUrl)} -OutFile $script -UseBasicParsing; PowerShell -ExecutionPolicy Bypass -File $script ${params.join(' ')}`
   }
+  if (targetOs.value === 'docker') {
+    const safeTag = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(version) ? version : 'latest'
+    const image = `ghcr.io/huilang-me/cfsm-agent:${safeTag}`
+    return [
+      'docker run -d --name cf-probe --restart=unless-stopped --network=host \\',
+      '  -v cf-probe-data:/data \\',
+      `  -e SERVER_ID=${quotePosixShellArg(copyServerId.value)} -e SECRET=${quotePosixShellArg(apiSecret.value)} -e WORKER_URL=${quotePosixShellArg(`${HOST}/update`)} \\`,
+      `  ${image}`
+    ].join('\n')
+  }
   const params = ['install']
   if (proxy) params.push(quotePosixShellArg(`--install-ghproxy=${proxy}`))
   if (version) params.push(quotePosixShellArg(`--install-version=${version}`))
