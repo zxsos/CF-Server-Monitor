@@ -1,13 +1,27 @@
 name: Sync from upstream
 
-# 定时从上游主线拉取更新，自动合并到 main。
-# 本仓库是「上游镜像 + 本地部署配置」，合并会保留本仓库已有的本地改动。
-# 若出现冲突，工作流会失败并提示，需要手动解决。
+# 1) 定时从上游 huilang-me/CF-Server-Monitor 合并到 main。
+# 2) 真的合并进新内容时，直接调用 deploy-workers.yml 重新部署线上 Worker。
+#    （合并提交由 GITHUB_TOKEN 推送，机器人推送不触发 on: push，所以必须显式调用，
+#     否则就是长期的「上游更新了、代码同步了、线上却不更新」。）
+#
+# 本仓库是「上游镜像 + 本地部署配置」：.github/workflows/** 由本仓库自己维护，
+# 同步时一律保留本地版本 —— 一方面上游 deploy.yml 生成的配置会把重复 Worker 建到
+# 同一个 D1/DO 上（已在 Actions 停用），另一方面 GITHUB_TOKEN 是 GitHub App 身份，
+# 推送任何改动 .github/workflows/* 的提交都会被服务端直接拒绝
+# （remote rejected: refusing to allow a GitHub App to create or update workflow）。
+# 上游一旦改自己的工作流，不还原的话整个同步会挂在推送那一步。
+# 真实源码冲突仍然报错等人工处理。
 
 on:
   schedule:
     - cron: "0 4 * * *" # UTC 04:00 = 北京时间 12:00
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: "强制重新部署 Worker（无更新时也部署）"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -19,6 +33,8 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,18 +42,50 @@ jobs:
           fetch-depth: 0
 
       - name: Merge upstream
+        id: merge
         run: |
           set -e
+          PRE=$(git rev-parse HEAD)
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/huilang-me/CF-Server-Monitor.git
           git fetch upstream --tags --prune
           if git merge-base --is-ancestor upstream/main HEAD; then
             echo "已是最新，无需同步。"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if ! git merge --no-edit upstream/main; then
-            echo "::error::合并上游时发生冲突，请手动解决后再推送。"
-            exit 1
+            while IFS= read -r -d '' f; do
+              case "$f" in
+                .github/workflows/*)
+                  echo "工作流文件冲突，保留本仓库版本：$f"
+                  git checkout "$PRE" -- "$f" 2>/dev/null || git rm -q --ignore-unmatch -- "$f"
+                  git add -A -- "$f" ;;
+                *)
+                  echo "::error::合并上游时发生冲突（$f），请手动解决后再推送。"
+                  exit 1 ;;
+              esac
+            done < <(git diff --name-only -z --diff-filter=U)
+            git commit --no-edit
+          fi
+          # 合并可能带进上游对工作流文件的改动（改、增都算），这类提交用 GITHUB_TOKEN
+          # 推不上去。必须改写（amend）刚生成的合并提交，而不是另起一个「改回去」的提交
+          # —— 后者本身也在改工作流文件，同样会被拒。
+          if ! git diff --quiet "$PRE" HEAD -- .github/workflows; then
+            echo "还原上游对工作流的改动（保留本仓库自有 CI 配置）："
+            git diff --name-status "$PRE" HEAD -- .github/workflows
+            git rm -r -q --cached -- .github/workflows
+            rm -rf .github/workflows
+            git checkout "$PRE" -- .github/workflows
+            git add -A -- .github/workflows
+            git commit --amend --no-edit
           fi
           git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true' || inputs.deploy
+    uses: ./.github/workflows/deploy-workers.yml
+    secrets: inherit

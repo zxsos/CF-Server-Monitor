@@ -1,13 +1,28 @@
 name: Deploy Worker (cf-server-monitor)
 
-# 本仓库上游那份 deploy.yml 生成的配置里 name 写的是 "server-monitor-pro"，
+# 上游那份 deploy.yml 生成的配置里 name 写的是 "server-monitor-pro"，
 # 每次 push 都会另建一个与线上共用同一个 D1 和 DO 命名空间的重复 Worker，
 # 并且忽略仓库里的 wrangler.toml。上游工作流已在 Actions 里停用，部署改走这里。
+#
+# 本文件额外支持 workflow_call，由 sync-upstream.yml 在每日合并后直接调用：
+# 那个合并提交是 GITHUB_TOKEN（GitHub App 身份）推的，机器人推送不会触发
+# 任何工作流的 on: push，所以只有 push 触发器时「同步成功但线上不更新」。
+#
+# 09-29 删掉了原先「生成 wrangler.deploy.toml 再传 config」那一整段：
+# cloudflare/wrangler-action@v3 没有 config 这个输入（它的输入只有 apiToken、
+# accountId、quiet、environment、workingDirectory、wranglerVersion、secrets、
+# preCommands、postCommands、command、vars、packageManager、gitHubToken），
+# 那句 `config: wrangler.deploy.toml` 被静默忽略；而 heredoc 里除了三行注释
+# 没有任何配置项，四个 sed 替换的占位符对应的 secret（D1_DATABASE_ID /
+# API_SECRET / API_USER_NAME / CORS_ALLOWED_ORIGINS）本仓库也根本没配。
+# 真正生效的配置一直是仓库根部的 wrangler.toml —— 09-22 13:17 那次部署成功
+# （线上 modified_on 对得上）走的正是这条路径。
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -28,23 +43,9 @@ jobs:
         run: npm install
       - name: 构建前端资源
         run: npm run build:frontend
-      - name: 生成 wrangler 配置
-        run: |
-          cat > wrangler.deploy.toml << 'WEOF'
-
-          # 与上游 deploy.yml 的差异只有三处：worker 名字改回线上实际在用的
-          # cf-server-monitor、main 指向本仓库新增的 cron 包装入口、不声明 [triggers]
-          # （两条 cron 已交还账户配额，由同账户的 scheduler 中枢用 fetch 驱动 /__cron）。
-
-          WEOF
-          sed -i "s|D1_PLACEHOLDER|${{ secrets.D1_DATABASE_ID }}|g" wrangler.deploy.toml
-          sed -i "s|SECRET_PLACEHOLDER|${{ secrets.API_SECRET }}|g" wrangler.deploy.toml
-          sed -i "s|USER_NAME_PLACEHOLDER|${{ secrets.API_USER_NAME }}|g" wrangler.deploy.toml
-          sed -i "s|CORS_ORIGINS_PLACEHOLDER|${{ secrets.CORS_ALLOWED_ORIGINS }}|g" wrangler.deploy.toml
       - name: 部署
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           wranglerVersion: '4'
-          config: wrangler.deploy.toml
