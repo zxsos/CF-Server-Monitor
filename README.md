@@ -10,12 +10,12 @@
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta8-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta9-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#许可证)
 
-[在线演示](https://demo.huilang.me/) · [API 文档](API.md) · [Go 探针文档](https://github.com/huilang-me/cfsm-agent) · [主题开发](theme-develop.md)
+[在线演示](https://demo.huilang.me/) · [API 文档](API.md) · [Go 探针文档](https://github.com/huilang-me/cfsm-agent) · [主题开发](theme-develop.md) · [主题开发 AI 提示词](theme-ai-prompt.md)
 
 </div>
 
@@ -97,7 +97,7 @@ flowchart LR
 
 近期变化：
 
-- `2.8.6`：Added GitHub login, WSS frontend subscription with 250ms batch reporting, added SMTP notification channel, added monthly traffic threshold alert, removed legacy database compatibility, added Docker installation method.
+- `2.8.6`：WSS前端订阅，采用250毫秒批量上报，新增SMTP通知渠道，新增月度流量阈值告警，移除旧版数据库兼容性，新增Docker安装方式。
 - `2.8.5`：支持自定义 Ping 节点名称；增加ICMP模式；优化WSS响应逻辑；API接口优化；原皮前端优化；新增4个ping节点。
 - `2.8.4`：新增 Agent WSS 上报和 WSS 开启时段，提升实时数据推送及时性，并允许非目标时段自动改用 POST 降低 Do 时长消耗；该能力要求 Agent 升级到 `v1.0.10+`。新增账户Do用量展示，优化无前端订阅时的 Do 实时广播请求，降低空闲额度消耗。通知设置新增自定义 Webhook 渠道, 新增前端wss超时配置。
 - `2.8.3`：新增磁盘 IO 统计，默认 Agent 切换为 Go 版本，新增服务器延迟与丢包率实时窗口。
@@ -406,15 +406,6 @@ smtp://<用户名>:<密码>@<host>:<port>?from=<发件人>&to=<收件人1,收件
 
 可在后台启用 Cloudflare Turnstile，用于降低公开 API 和登录入口被刷的风险。多站点模式下，如果多个站点都启用 Turnstile，请保持 Site Key 一致。
 
-### GitHub 登录
-
-1. 在 GitHub `Settings → Developer settings → OAuth Apps` 中创建 [OAuth App](https://github.com/settings/developers)。
-2. 在 CFSM 后台的“管理员登录设置”中填写 Client ID 和 Client Secret，保存配置。
-3. 将后台显示的 `Authorization callback URL` 原样填入 GitHub OAuth App。
-4. 保持管理员密码登录状态，点击“绑定 GitHub 账号”并完成授权。系统会自动保存该账号不可变的 GitHub 数字 ID，此后仅该账号能够使用 GitHub 登录。
-
-GitHub OAuth 配置和绑定结果与其他站点配置一样保存在 D1 的 `site_options` 中，不需要升级数据库结构。Client Secret 不会通过后台设置读取接口返回；再次保存时留空即可保留原值。重新绑定必须处于管理员登录状态，建议保留账号密码登录作为应急入口。
-
 ### CORS
 
 默认建议仅同源访问。如果需要独立前台或多站点聚合，在 `CORS_ALLOWED_ORIGINS` 中加入可信来源。
@@ -437,7 +428,10 @@ GitHub OAuth 配置和绑定结果与其他站点配置一样保存在 D1 的 `s
 - 第三方主题 GitHub tree 地址
 - 管理员预览主题
 
-第三方主题只反代主题仓库中的 `index.html` 与 `assets/`，管理后台仍使用内置主题。开发自定义主题请参考 [theme-develop.md](theme-develop.md)。
+第三方主题只反代主题仓库中的 `index.html` 与 `assets/`，管理后台仍使用内置主题。开发自定义主题请参考：
+
+- [theme-ai-prompt.md](theme-ai-prompt.md)：主题开发 AI 提示词，开发者直接整段粘贴给 AI 编码助手使用，内含数据流、D1 消耗铁律和完工自查清单
+- [theme-develop.md](theme-develop.md)：完整 API 字段定义与鉴权说明
 
 ## 升级与维护
 
@@ -601,6 +595,7 @@ CF-Server-Monitor/
 ├── test/                    # 本地测试和模拟数据工具
 ├── API.md                   # REST / WebSocket API 文档
 ├── theme-develop.md         # 第三方主题开发文档
+├── theme-ai-prompt.md       # 主题开发 AI 提示词（粘贴给 AI 使用）
 ├── wrangler.toml            # 本地 Wrangler 配置
 └── version.json             # Worker / Agent 版本
 ```
@@ -684,6 +679,7 @@ echo <CF_CDN_IP> <你的探针域名> | sudo tee -a /etc/hosts
 - [API.md](API.md)：REST API、WebSocket、鉴权、错误码和数据结构
 - [https://github.com/huilang-me/cfsm-agent](cfsm-agent)：Go 版本 Agent 配置、升级、日志与排障
 - [theme-develop.md](theme-develop.md)：第三方主题开发
+- [theme-ai-prompt.md](theme-ai-prompt.md)：主题开发 AI 提示词，直接粘贴给 AI 即可按项目规范开发主题
 - [test/README.md](test/README.md)：本地模拟数据和测试流程
 
 ## 社区
@@ -700,6 +696,10 @@ echo <CF_CDN_IP> <你的探针域名> | sudo tee -a /etc/hosts
 </p>
 
 - 微信赞赏：扫码支持
+
+### 合作与推荐
+
+如果你需要粤港澳大湾区的机场接送、商务用车或私人包车服务，可参考 [Hong Kong Chauffeur](https://hkchauffeur.com/)，覆盖香港、深圳、广州、珠海、澳门等地区。
 
 ## 致谢
 

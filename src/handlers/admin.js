@@ -544,11 +544,10 @@ const PUBLIC_ADMIN_ACTION_HANDLERS = {
 };
 
 export function sanitizeAdminSettings(fullSettings = {}) {
-  const { jwt_secret, github_client_secret, password, ...safeSettings } = fullSettings || {};
+  const { jwt_secret, password, ...safeSettings } = fullSettings || {};
   return {
     ...safeSettings,
-    password_configured: Boolean(String(password || '').trim()),
-    github_client_secret_configured: Boolean(String(github_client_secret || '').trim())
+    password_configured: Boolean(String(password || '').trim())
   };
 }
 
@@ -789,26 +788,6 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
         }
       }
 
-      const githubOAuthEnabled = normalizeBooleanSetting(
-        settings.github_oauth_enabled !== undefined
-          ? settings.github_oauth_enabled
-          : sys?.github_oauth_enabled
-      ) === 'true';
-      const effectiveGithubClientId = String(
-        settings.github_client_id !== undefined ? settings.github_client_id : sys?.github_client_id || ''
-      ).trim();
-      const effectiveGithubClientSecret = String(
-        settings.github_client_secret !== undefined ? settings.github_client_secret : sys?.github_client_secret || ''
-      ).trim();
-      if (githubOAuthEnabled) {
-        if (!effectiveGithubClientId) {
-          return createBadRequestResponse('githubClientIdRequired');
-        }
-        if (!effectiveGithubClientSecret) {
-          return createBadRequestResponse('githubClientSecretRequired');
-        }
-      }
-
       // 如果 tg_notify 或 expire_reminder 开启，验证 tg_bot_token 不为空
       const hasResourceAlertRulesInput = settings.resource_alert_rules !== undefined;
       const tgNotify = settings.tg_notify !== undefined
@@ -930,14 +909,6 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
             siteOptions[field] = normalizeNotificationWebhookBody(settings[field]);
           } else if (field === 'notification_template') {
             siteOptions[field] = normalizeNotificationTemplate(settings[field]);
-          } else if (field === 'github_oauth_enabled') {
-            siteOptions[field] = normalizeBooleanSetting(settings[field]);
-          } else if (field === 'github_client_id' || field === 'github_client_secret') {
-            siteOptions[field] = String(settings[field] || '').trim();
-          } else if (field === 'github_user_id') {
-            siteOptions[field] = /^[1-9]\d*$/.test(String(settings[field] || '').trim())
-              ? String(settings[field]).trim()
-              : '';
           } else if (field === 'theme_url') {
             siteOptions[field] = normalizedThemeUrl;
           } else {

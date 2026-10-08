@@ -3,11 +3,9 @@ export const FRONTEND_WS_TIMEOUT_MINUTES_MAX = 1440
 
 export const TIME = {
   ONLINE_THRESHOLD_MS: 300000,
-  POLL_INTERVAL_MS: 60000,
   RECONNECT_INITIAL_DELAY_MS: 1000,
   RECONNECT_MAX_DELAY_MS: 30000,
-  MAX_RECONNECT_ATTEMPTS: 10,
-  CHART_DATA_RETENTION_MS: 3600000
+  MAX_RECONNECT_ATTEMPTS: 10
 }
 
 export const CHART = {
@@ -38,30 +36,6 @@ export const STORAGE = {
   LANGUAGE_PREFERENCE: 'language_preference',
   VIEW_PREFERENCE: 'monitor_preferred_view',
   JWT_TOKEN: 'jwt_token',
-  TURNSTILE_TOKEN: 'turnstile_token'
-}
-
-export const STATUS = {
-  ONLINE: 'online',
-  OFFLINE: 'offline'
-}
-
-export const COLORS = {
-  ACCENT_GREEN: 'var(--accent-green)',
-  ACCENT_RED: 'var(--accent-red)',
-  ACCENT_CYAN: 'var(--accent-cyan)',
-  ACCENT_PURPLE: 'var(--accent-purple)',
-  ACCENT_YELLOW: 'var(--accent-yellow)',
-  TEXT_MUTED: 'var(--text-muted)'
-}
-
-export default {
-  TIME,
-  CHART,
-  HISTORY,
-  LATENCY_WINDOW,
-  PING,
-  STORAGE,
-  STATUS,
-  COLORS
+  TURNSTILE_TOKEN: 'turnstile_token',
+  TURNSTILE_VERIFIED: 'turnstile_verified'
 }

@@ -1,12 +1,10 @@
-import { http, isAdminLoggedIn } from './http'
+import { http } from './http'
 import { getApiBases, getWsBase, hasMultipleApiBases, getTitle } from './config'
-import { DEFAULT_SITE_TITLE, FRONTEND_WS_TIMEOUT_MINUTES_MAX, LATENCY_WINDOW } from './constants'
+import { DEFAULT_SITE_TITLE, FRONTEND_WS_TIMEOUT_MINUTES_MAX, LATENCY_WINDOW, STORAGE } from './constants'
 import { ref } from 'vue'
 import { normalizeTimestamp } from './time.js'
 import { TIME } from './constants'
 import { resolveDisplayMode } from './displayMode.js'
-
-export { getApiBases, getWsBase }
 
 export const VERSION = ref('')
 export const LAST_WORKERS_VERSION = ref('')
@@ -51,7 +49,7 @@ export const createLiveSocket = (subscribe, handlers = {}, apiIndex = 0, serverI
 
   const getJwtToken = () => {
     try {
-      return localStorage.getItem('jwt_token') || ''
+      return localStorage.getItem(STORAGE.JWT_TOKEN) || ''
     } catch (_) {
       return ''
     }
@@ -415,22 +413,18 @@ export const adminApi = async (data, apiIndex = 0) => {
 
 export const login = async (username, password, turnstileToken = '', apiIndex = 0) => {
   if (turnstileToken) {
-    localStorage.setItem('turnstile_token', turnstileToken)
+    localStorage.setItem(STORAGE.TURNSTILE_TOKEN, turnstileToken)
   }
   const result = await http.postByIndex('/admin/api', { action: 'login', username, password }, apiIndex, { autoRedirect: false })
   
   if (!result.error && result.data && result.data.token) {
-    localStorage.setItem('jwt_token', result.data.token)
+    localStorage.setItem(STORAGE.JWT_TOKEN, result.data.token)
   }
   return result
 }
 
-export const startGithubLogin = async (apiIndex = 0, mode = 'login') => {
-  return http.postByIndex('/auth/github', { mode }, apiIndex, { autoRedirect: false })
-}
-
 export const logout = () => {
-  localStorage.removeItem('jwt_token')
+  localStorage.removeItem(STORAGE.JWT_TOKEN)
 }
 
 export const fetchConfig = async (apiIndex = 0) => {
@@ -465,5 +459,3 @@ export const clearHistory = async (apiIndex = 0) => {
   }
   return result.data
 }
-
-export { isAdminLoggedIn }

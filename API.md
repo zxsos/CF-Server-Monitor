@@ -1063,8 +1063,8 @@ https://raw.githubusercontent.com/huilang-me/CFSM-Theme-Store/refs/heads/main/th
 | Path | 行为 |
 | ---- | ---- |
 | `/`、`/#/`、`/#/server/:id` 等前台路径 | `theme_url` 为空时返回内置主题；配置第三方主题时返回反代后的主题 `index.html` |
-| `/admin` | 始终返回内置默认主题的管理后台入口 |
-| `/admin/` | `302` 跳转到 `/admin#admin` |
+| `/admin` | 始终返回内置默认主题的管理后台入口；无 hash 进入时由前端归一化为 `/admin#/admin` |
+| `/admin/` | `302` 跳转到 `/admin#/admin` |
 | `/assets/*` | 配置或预览第三方主题时反代对应主题 `assets/`；未配置主题时返回 404 |
 | 其他静态路径 | 不走主题反代，由 Workers Static Assets 直接处理，缓存头以 `public/_headers` 为准 |
 
@@ -1178,7 +1178,7 @@ Header：`X-Turnstile-Token: <token>`（当 `site_options.turnstile_enabled` 或
 
 > `api_secret` 仅在 `get_settings` 中返回，方便前端展示/复制。
 >
-> ~~`settings` 包含 `jwt_secret`。~~ **2026-09-19 修订**：后端会从返回对象中剔除 `jwt_secret`、`password` 和 GitHub Client Secret；其他敏感值（如 Cloudflare Token、Turnstile Secret）仍可能存在，必须使用 HTTPS 并限制管理 Token。
+> ~~`settings` 包含 `jwt_secret`。~~ **2026-09-19 修订**：后端会从返回对象中剔除 `jwt_secret`、`password`；其他敏感值（如 Cloudflare Token、Turnstile Secret）仍可能存在，必须使用 HTTPS 并限制管理 Token。
 
 ***
 

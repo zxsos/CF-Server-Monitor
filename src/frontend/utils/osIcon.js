@@ -159,18 +159,6 @@ export const getOSImage = (osString) => {
   return image ? `${OS_ICON_BASE}${image}` : ''
 }
 
-export const getAllOSImages = () => {
-  const imageMap = {}
-
-  osConfigs.forEach(config => {
-    imageMap[config.keywords[0]] = `${OS_ICON_BASE}${config.image}`
-  })
-
-  imageMap.unknown = `${OS_ICON_BASE}${defaultOSConfig.image}`
-
-  return imageMap
-}
-
 export const getOSName = (osString) => {
   const config = findOSConfig(osString)
   if (config !== defaultOSConfig) return config.name
@@ -181,5 +169,3 @@ export const getOSName = (osString) => {
   const parts = raw.split(/[\s/]/)
   return parts[0] || defaultOSConfig.name
 }
-
-export const isSupportedOS = (osString) => findOSConfig(osString) !== defaultOSConfig

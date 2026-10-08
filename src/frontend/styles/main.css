@@ -3845,34 +3845,6 @@ body.server-row-drag-active * {
     background: #00bf99;
 }
 
-.login-divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 18px 0;
-    color: var(--text-muted);
-    font-size: 11px;
-    text-transform: uppercase;
-}
-
-.login-divider::before,
-.login-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border-color);
-}
-
-.github-login-btn {
-    background: #24292f;
-    border-color: #57606a;
-    color: #ffffff;
-}
-
-.github-login-btn:hover {
-    background: #32383f;
-}
-
 /* --------------------------------------------------------------------------
    38. Admin Panel Styles
    -------------------------------------------------------------------------- */
@@ -4762,10 +4734,6 @@ body.mikus-theme .mikus-stats-mascot-img {
 
 .flex-1 {
     flex: 1;
-}
-
-.github-callback-input {
-    min-width: 0;
 }
 
 .mt-0 { margin-top: 0; }

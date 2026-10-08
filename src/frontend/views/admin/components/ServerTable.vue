@@ -87,15 +87,9 @@
                   <OsIcon :os="server.os" />
                 </span>
                 <a
-                  v-if="themeUrl"
-                  :href="getPublicServerHref(server)"
+                  :href="getServerDetailHref(server)"
                   class="server-name-link"
                 >{{ server.name }}</a>
-                <router-link
-                  v-else
-                  :to="getDefaultServerRoute(server)"
-                  class="server-name-link"
-                >{{ server.name }}</router-link>
               </div>
             </td>
             <td>
@@ -191,7 +185,6 @@ const props = defineProps({
   groups: { type: Array, default: () => ['Default'] },
   activeTab: { type: String, default: 'servers' },
   selectedApiIndex: { type: Number, default: 0 },
-  themeUrl: { type: String, default: '' },
   latestAgentVersion: { type: String, default: '' },
   copiedServerId: { type: [String, Number], default: null },
   copiedNoteServerId: { type: [String, Number], default: null },
@@ -475,6 +468,6 @@ const getAgentVersionClass = (version) => {
   return normalizeVersion(version) === latest ? 'text-green' : 'text-red'
 }
 const getServerQuery = () => props.selectedApiIndex ? `?apiIndex=${props.selectedApiIndex}` : ''
-const getDefaultServerRoute = (server) => `/server/${server.id}${getServerQuery()}`
-const getPublicServerHref = (server) => `/#/server/${encodeURIComponent(server.id)}${getServerQuery()}`
+// 详情页是公开页面，走域名根路径入口 /#/server/:id
+const getServerDetailHref = (server) => `/#/server/${encodeURIComponent(server.id)}${getServerQuery()}`
 </script>

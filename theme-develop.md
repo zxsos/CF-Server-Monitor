@@ -4,7 +4,7 @@
 >
 > 本文档只保留第三方主题可用的公开 API、WebSocket 和静态目录约定，不介绍后台管理接口。
 >
-> 管理后台固定由默认主题接管；主题中的管理入口只能跳转到 `/admin#admin`。
+> 管理后台固定由默认主题接管；主题中的管理入口应跳转到 `/admin#/admin`（旧式 `/admin#admin` 仍然兼容，后台入口会自动归一化）。
 
 **Base URL**：`https://<your-worker-domain>`
 
@@ -105,7 +105,7 @@ my-theme/
 
 - 首页：`/#/` 或 `/#`
 - 详情页：`/#/server/:id`
-- 管理后台：链接到 `/admin#admin`，由内置默认主题接管，第三方主题不得实现管理页
+- 管理后台：链接到 `/admin#/admin`（旧式 `/admin#admin` 兼容），由内置默认主题接管，第三方主题不得实现管理页
 
 ### 0.3 版本升级提示
 
@@ -156,7 +156,7 @@ my-theme/
 - `/api/ws`、`/api/config`（不带 Turnstile Header 时）无需验证
 - `/api/config` 带 `X-Turnstile-Token` 或 `X-Turnstile-Verified` 时会进入验证流程，并通过 `verified` / `turnstile_verified` 返回验证结果
 - `/api/ws` 不参与 Turnstile 验证，但非公开站点仍需要通过 WebSocket JWT 认证
-- `turnstile_enabled` 是全局 API 验证开关，`turnstile_login_enabled` 是内置后台登录页验证开关；第三方主题不实现登录页，管理入口跳转 `/admin#admin`
+- `turnstile_enabled` 是全局 API 验证开关，`turnstile_login_enabled` 是内置后台登录页验证开关；第三方主题不实现登录页，管理入口跳转 `/admin#/admin`
 
 ***
 
@@ -442,7 +442,7 @@ Headers: (按需) Authorization, X-Turnstile-Token/Verified
 }
 ```
 
-`tags` 为英文逗号分隔字符串。`note` 属于管理端内部字段，不从 dashboard 公共接口返回。`disk` 为可选磁盘 IO 指标对象：`read_bps` / `write_bps` 单位为 B/s，`read_iops` / `write_iops` 为 IOPS，`await_ms` 为毫秒，`util` 为百分比；旧探针、旧数据缺失，或者 6 个子字段全为 0 时，API / WebSocket 不返回该对象，主题不应展示依赖磁盘 IO 的图表。`latestReportUpdates` 与 `/api/servers` 同名字段形状一致，REST 样本统一为 `{ ts, data }` 并按探针批量采样包透传；内置探针默认只在普通采样点上报 `cpu`、`ram_total`、`ram_used`、`swap_total`、`swap_used`、`net_in_speed`、`net_out_speed`，每次报告最后一个样本可能额外携带 `disk` 等报告级字段；回放状态保留约 5 分钟，允许为空数组。`gpu` 已废弃，主题应使用 `gpu_info`；新版上报和 WebSocket 实时数据为 `[{ id, name, info }]` 数组，历史/详情 REST 响应中可能是同结构的 JSON 字符串。
+`tags` 为英文逗号分隔字符串。`note` 属于管理端内部字段，不从 dashboard 公共接口返回。`disk` 为可选磁盘 IO 指标对象：`read_bps` / `write_bps` 单位为 B/s，`read_iops` / `write_iops` 为 IOPS，`await_ms` 为毫秒，`util` 为百分比；无磁盘 IO 数据或 6 个子字段全为 0 时，API / WebSocket 不返回该对象，主题不应展示依赖磁盘 IO 的图表。`latestReportUpdates` 与 `/api/servers` 同名字段形状一致，REST 样本统一为 `{ ts, data }` 并按探针批量采样包透传；内置探针默认只在普通采样点上报 `cpu`、`ram_total`、`ram_used`、`swap_total`、`swap_used`、`net_in_speed`、`net_out_speed`，每次报告最后一个样本可能额外携带 `disk` 等报告级字段；回放状态保留约 5 分钟，允许为空数组。GPU 信息统一使用 `gpu_info`；上报和 WebSocket 实时数据为 `[{ id, name, info }]` 数组，历史/详情 REST 响应中为同结构的 JSON 字符串。
 
 `ping` / `loss` 窗口数组仅在 `/api/servers` 的 `servers[]` 中返回，`/api/server` 详情接口不返回新增窗口数组。主题可从 `/api/config` 的 `latency_window` 读取当前窗口参数。只有后台开启三网详情时才会查询窗口数据；关闭时后端仍返回 `ping: []` / `loss: []`，主题不应展示三网小图。开启后，窗口从 D1 历史表最近 2 小时按时间范围抽样，最多 20 个真实样本点，点格式为 `{ ts, ct, cu, cm, bd }`，其中 `ct` / `cu` / `cm` / `bd` 分别对应不同探测线路。时间间隔目标约 6 分钟，但 `ts` 保留真实上报时间，不会强制对齐为等差序列；历史不足、上报中断或某个时间段无数据时不会用最近点补齐，数组可能少于 20 个。该 D1 抽样结果在当前 Worker isolate 内缓存约 5 分钟，缓存不跨 isolate 共享。
 
@@ -483,12 +483,6 @@ Headers: (按需) Authorization, X-Turnstile-Token/Verified
     "cpu": 12.3,
     "gpu_info": "[{\"id\":\"0\",\"name\":\"NVIDIA RTX 3060\",\"info\":12.5}]",
     "ram_used": 3700,
-    "disk_read_bps": 4096,
-    "disk_write_bps": 2048,
-    "disk_read_iops": 12,
-    "disk_write_iops": 8,
-    "disk_await_ms": 1.5,
-    "disk_util": 3.2,
     "disk": {
       "read_bps": 4096,
       "write_bps": 2048,
@@ -521,7 +515,7 @@ Headers: (按需) Authorization, X-Turnstile-Token/Verified
 
 - 未登录用户 `hours > 24` 时返回 `401`
 - 服务端按后台 `long_history_points` 配置返回采样点，默认 120 个点
-- 历史行有磁盘 IO 数据时会返回 `disk` 对象；为兼容历史存储，也可能同时包含 `disk_read_bps`、`disk_write_bps`、`disk_read_iops`、`disk_write_iops`、`disk_await_ms`、`disk_util` 平铺字段。主题只需要读取 `disk`；缺失时不应展示磁盘 IO 图表
+- 历史行有磁盘 IO 数据时以 `disk` 对象返回；缺失时不应展示磁盘 IO 图表
 - 数据库字段缺失且需要升级时可能返回 `409 { "message": "databaseUpgradeRequired" }`
 
 **示例**：
@@ -772,7 +766,7 @@ interface Server {
   swap_used: number;
   disk_total: number;
   disk_used: number;
-  disk?: DiskIoMetrics; // 磁盘 IO；旧数据可能缺失
+  disk?: DiskIoMetrics; // 磁盘 IO；无有效数据时可能缺失
   cpu_cores: number;
   cpu_info: string;
   gpu_info: Array<{ id: string; name: string; info: number | null }> | string;
@@ -792,12 +786,6 @@ interface Server {
 
 interface HistoryMetricRow extends Partial<Server> {
   timestamp: number;
-  disk_read_bps?: number;
-  disk_write_bps?: number;
-  disk_read_iops?: number;
-  disk_write_iops?: number;
-  disk_await_ms?: number;
-  disk_util?: number;
   disk?: DiskIoMetrics;
 }
 

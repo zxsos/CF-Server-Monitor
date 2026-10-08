@@ -1,8 +1,10 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { ADMIN_ENTRY_URL, isAdminPath } from './router/adminEntryUrl'
 import './styles/main.css'
 import './styles/light.css'
+import { STORAGE } from './utils/constants'
 import { applyDefaultLanguage, currentLang, resolveLanguagePreference, translations } from './utils/i18n'
 import { http, DEFAULT_REQUEST_TIMEOUT_MS } from './utils/http'
 import { initConfig, hasMultipleApiBases } from './utils/config'
@@ -21,7 +23,7 @@ import {
 } from './utils/turnstile'
 
 const getTranslation = () => {
-  const lang = currentLang.value || resolveLanguagePreference(localStorage.getItem('language_preference') || 'auto')
+  const lang = currentLang.value || resolveLanguagePreference(localStorage.getItem(STORAGE.LANGUAGE_PREFERENCE) || 'auto')
   return translations[lang] || translations.en
 }
 
@@ -73,8 +75,8 @@ async function fetchConfig() {
 
     // 超时或 403：清掉可疑的 Turnstile 缓存，不带 header 重试走 bypass 路径
     if (result.error && (result.timeout || result.status === 403)) {
-      localStorage.removeItem('turnstile_token')
-      localStorage.removeItem('turnstile_verified')
+      localStorage.removeItem(STORAGE.TURNSTILE_TOKEN)
+      localStorage.removeItem(STORAGE.TURNSTILE_VERIFIED)
       result = await http.get('/api/config', { includeAuth: true, includeTurnstile: false, includeTurnstileVerified: false, autoRedirect: false, timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS })
     }
 
@@ -83,7 +85,6 @@ async function fetchConfig() {
         turnstile_enabled: false,
         turnstile_login_enabled: false,
         turnstile_site_key: '',
-        github_oauth_enabled: false,
         display_mode: 'bar',
         preferred_theme: 'auto',
         default_language: 'auto',
@@ -102,7 +103,6 @@ async function fetchConfig() {
         turnstile_enabled: false,
         turnstile_login_enabled: false,
         turnstile_site_key: '',
-        github_oauth_enabled: false,
         display_mode: 'bar',
         preferred_theme: 'auto',
         default_language: 'auto',
@@ -118,7 +118,6 @@ async function fetchConfig() {
     const turnstileEnabled = isTurnstileValueEnabled(data.turnstile_enabled)
     const turnstileLoginEnabled = isTurnstileValueEnabled(data.turnstile_login_enabled)
     const turnstileSiteKey = data.turnstile_site_key || ''
-    const githubOAuthEnabled = data.github_oauth_enabled === true || data.github_oauth_enabled === 'true'
     const version = data.version || ''
     const lastWorkersVersion = data.last_workers_version || ''
     const lastAgentVersion = data.last_agent_version || ''
@@ -142,7 +141,6 @@ async function fetchConfig() {
       turnstile_enabled: turnstileEnabled,
       turnstile_login_enabled: turnstileLoginEnabled,
       turnstile_site_key: turnstileSiteKey,
-      github_oauth_enabled: githubOAuthEnabled,
       custom_ct_name: data.custom_ct_name || '电信',
       custom_cu_name: data.custom_cu_name || '联通',
       custom_cm_name: data.custom_cm_name || '移动',
@@ -171,7 +169,6 @@ async function fetchConfig() {
     turnstile_enabled: false,
     turnstile_login_enabled: false,
     turnstile_site_key: '',
-    github_oauth_enabled: false,
     custom_ct_name: '电信', custom_cu_name: '联通', custom_cm_name: '移动', custom_bd_name: 'BGP',
     node_1_name: 'Node 1', node_2_name: 'Node 2', node_3_name: 'Node 3', node_4_name: 'Node 4',
     display_mode: 'bar',
@@ -289,27 +286,9 @@ const renderStartupTurnstile = async (siteKey, apiIndex) => {
   }
 }
 
-const isAdminPath = () => {
-  return window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/')
-}
-
-const bridgeAdminPathToHashRoute = () => {
-  if (!isAdminPath()) return
-  const hash = window.location.hash || ''
-
-  const legacyHashSuffix = hash.startsWith('#/admin')
-    ? hash.slice('#/admin'.length)
-    : hash.startsWith('#admin')
-      ? hash.slice('#admin'.length)
-      : ''
-  const adminHash = `#admin${legacyHashSuffix || window.location.search || ''}`
-  if (hash === adminHash) return
-
-  window.history.replaceState(null, '', `/admin${adminHash}`)
-}
-
 async function initApp() {
-  bridgeAdminPathToHashRoute()
+  // 后台入口 URL 的归一化在 router 模块内、createWebHashHistory() 之前完成，
+  // 这里只读取归一化后的 URL 做分支判断，不能再改写地址栏。
 
   // Load frontend runtime config (apiBase) first so all subsequent
   // HTTP / WebSocket requests go through the configured origin.
@@ -388,7 +367,7 @@ async function initApp() {
   app.use(router)
   app.mount('#app').$nextTick(() => {
     if (!isAdmin && !config.is_public && !config.authorization) {
-      window.location.replace('/admin#admin')
+      window.location.replace(ADMIN_ENTRY_URL)
     }
     const loading = document.getElementById('loading')
     if (loading) {

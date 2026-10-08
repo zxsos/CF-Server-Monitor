@@ -243,7 +243,7 @@ export function calculateFinanceSummary(servers, exchangeRates = DEFAULT_EXCHANG
   return summary
 }
 
-export function calculateRemainingValueCNY(server, priceCNY, now = Date.now()) {
+function calculateRemainingValueCNY(server, priceCNY, now = Date.now()) {
   const expireDate = String(server?.expire_date || server?.expired_at || '').trim()
   if (!expireDate || priceCNY <= 0) return 0
 
@@ -262,7 +262,7 @@ export function calculateRemainingValueCNY(server, priceCNY, now = Date.now()) {
   return Math.min(priceCNY, priceCNY * (diffMs / billingCycleMs))
 }
 
-export function calculateMonthlyAverageCostCNY(server, priceCNY) {
+function calculateMonthlyAverageCostCNY(server, priceCNY) {
   if (priceCNY <= 0) return 0
   const billingCycleDays = getBillingCycleDays(server)
   return billingCycleDays > 0 ? priceCNY / billingCycleDays * MONTH_DAYS : 0

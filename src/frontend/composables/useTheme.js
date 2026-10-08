@@ -1,6 +1,7 @@
 import { ref, onMounted } from "vue";
+import { STORAGE } from "../utils/constants";
 
-const STORAGE_KEY = "theme_preference";
+const STORAGE_KEY = STORAGE.THEME_PREFERENCE;
 const themeChangeCallbacks = [];
 
 const currentTheme = ref("auto");

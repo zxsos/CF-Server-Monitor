@@ -68,5 +68,3 @@ export const getPublicAssetUrl = (assetPath) => {
   const cleanPath = String(assetPath || '').replace(/^\/+/, '')
   return cleanPath ? `./${cleanPath}` : './'
 }
-
-export default { initConfig, getApiBases, getWsBase, hasMultipleApiBases, hasConfiguredApiBase, getTitle, getPublicAssetUrl }

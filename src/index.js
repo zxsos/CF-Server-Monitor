@@ -6,7 +6,6 @@ import { serveFrontend } from './handlers/frontend.js';
 import { handleUpdate, handleWebSocketUpgrade, handleUpdateWebSocketUpgrade } from './handlers/update.js';
 import { handleServerAPI, handleServersAPI } from './handlers/dashboard.js';
 import { handleTheme } from './handlers/theme.js';
-import { handleGithubOAuthCallback, handleGithubOAuthStartApi, isGithubOAuthReady } from './handlers/githubAuth.js';
 import { isValidThemeOptions, loadSettings, loadSiteSettings, loadAppearanceOptions, normalizeFrontendWsTimeoutMinutes, normalizeLongHistoryPoints, saveThemeOptions, setDebug, debug } from './utils/settings.js';
 import { omitNullLossProbeFields } from './handlers/dashboard.js';
 import { checkAuth, simpleAuthResponse } from './middleware/auth.js';
@@ -206,7 +205,8 @@ export default {
       const search = target.search;
       target.pathname = '/admin';
       target.search = '';
-      target.hash = `admin${search}`;
+      // 与前端入口地址统一为 #/admin 形式；旧式 #admin 由前端归一化兼容
+      target.hash = `/admin${search}`;
       return Response.redirect(target.toString(), 302);
     }
 
@@ -324,7 +324,6 @@ export default {
           turnstile_enabled: turnstileEnabled,
           turnstile_login_enabled: turnstileEnabled || turnstileLoginEnabled,
           turnstile_site_key: sys.turnstile_site_key || '',
-          github_oauth_enabled: isGithubOAuthReady(sys),
           custom_ct_name: sys.custom_ct_name || '电信',
           custom_cu_name: sys.custom_cu_name || '联通',
           custom_cm_name: sys.custom_cm_name || '移动',
@@ -347,30 +346,6 @@ export default {
             hours: DASHBOARD_LATENCY_WINDOW_HOURS
           }
         });
-      }},
-      { method: 'POST', path: '/auth/github', handler: async () => {
-        await ensureSiteSettings();
-        let data = {};
-        try {
-          data = await request.json();
-        } catch (_) {
-        }
-        const mode = data?.mode === 'bind' ? 'bind' : 'login';
-        if (mode === 'bind') {
-          if (!await checkAuth(request, env, sys)) {
-            return simpleAuthResponse();
-          }
-        } else if (sys.turnstile_enabled === 'true' || sys.turnstile_login_enabled === 'true') {
-          const turnstileToken = request.headers.get('X-Turnstile-Token');
-          if (!await verifyTurnstileToken(turnstileToken, sys.turnstile_secret_key || '')) {
-            return createErrorResponse(new AppError('verificationFailed', 403));
-          }
-        }
-        return handleGithubOAuthStartApi(request, sys, mode);
-      }},
-      { method: 'GET', path: '/auth/github/callback', handler: async () => {
-        await ensureSiteSettings();
-        return handleGithubOAuthCallback(request, env, sys);
       }},
       { method: 'GET', path: '/theme', handler: async () => {
         const themeResult = await handleTheme()

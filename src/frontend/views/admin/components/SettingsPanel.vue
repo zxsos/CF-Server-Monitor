@@ -735,68 +735,6 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <div class="checkbox-item">
-            <input type="checkbox" id="cfg_github_oauth_enabled" v-model="settings.github_oauth_enabled">
-            <label><b>{{ trans.enableGithubOAuth }}</b></label>
-            <HelpTooltip :text="trans.githubOAuthTip" />
-          </div>
-        </div>
-
-        <template v-if="settings.github_oauth_enabled">
-
-          <div class="form-row">
-            <div class="form-group flex-1">
-              <label class="form-label">{{ trans.githubClientId }}</label>
-              <input type="text" name="github_client_id" autocomplete="off" v-model.trim="settings.github_client_id" class="form-input" :placeholder="trans.githubClientIdPlaceholder">
-            </div>
-
-            <div class="form-group flex-1">
-              <label class="form-label">{{ trans.githubClientSecret }}</label>
-              <div class="password-input-wrapper">
-                <input type="text" name="github_client_secret" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" v-model="settings.github_client_secret" :class="['form-input', { 'secret-input-masked': !passwordVisible.githubClientSecret }]" :placeholder="settings.github_client_secret_configured ? '••••••••' : ''">
-                <button type="button" class="password-toggle" @click="$emit('toggle-password', 'githubClientSecret')">
-                  {{ passwordVisible.githubClientSecret ? '🙈' : '👁️' }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">{{ trans.githubBoundAccount }}</label>
-            <div class="inline-help-action">
-              <span class="text-sm">
-                {{ settings.github_user_id
-                  ? `ID: ${settings.github_user_id}`
-                  : trans.githubNotBound }}
-              </span>
-              <button type="button" class="btn btn-sm" :disabled="!canBindGithub || githubBindingLoading" @click="$emit('bind-github-account')">
-                {{ githubBindingLoading ? '⏳' : (settings.github_user_id ? trans.rebindGithubAccount : trans.bindGithubAccount) }}
-              </button>
-              <HelpTooltip :text="canBindGithub ? trans.githubBindingTip : trans.githubSaveBeforeBinding" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">
-              {{ trans.githubCallbackUrl }}
-              <HelpTooltip :text="trans.githubCallbackUrlTip" />
-            </label>
-            <div class="flex-center-gap-sm">
-              <input type="text" class="form-input flex-1 github-callback-input" :value="githubCallbackUrl" readonly>
-              <button
-                type="button"
-                class="btn btn-sm"
-                :aria-label="githubCallbackCopied ? trans.copied : trans.copy"
-                :title="githubCallbackCopied ? trans.copied : trans.copy"
-                @click="copyGithubCallbackUrl"
-              >
-                {{ githubCallbackCopied ? `✅ ${trans.copied}` : `📋 ${trans.copy}` }}
-              </button>
-            </div>
-          </div>
-        </template>
-
       </div>
 
       <div class="settings-section">
@@ -853,7 +791,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import HelpTooltip from '../../../components/HelpTooltip.vue'
 import { FRONTEND_WS_TIMEOUT_MINUTES_MAX, HISTORY } from '../../../utils/constants.js'
-import { copyTextToClipboard } from '../../../utils/clipboard.js'
 import { currentLang } from '../../../utils/i18n.js'
 import { PING_NODE_FIELDS, validatePingNode } from '../../../utils/pingNode.js'
 
@@ -868,44 +805,13 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   changeAdminPassword: { type: Boolean, default: false },
   testNotificationLoading: { type: Boolean, default: false },
-  d1UsageLoading: { type: Boolean, default: false },
-  githubBindingLoading: { type: Boolean, default: false }
+  d1UsageLoading: { type: Boolean, default: false }
 })
-
-const githubCallbackUrl = computed(() => {
-  try {
-    return new URL('/auth/github/callback', props.selectedApiBase || props.currentOrigin).toString()
-  } catch (_) {
-    return '/auth/github/callback'
-  }
-})
-
-const githubCallbackCopied = ref(false)
-let githubCallbackCopiedTimer
-
-const copyGithubCallbackUrl = async () => {
-  const copied = await copyTextToClipboard(githubCallbackUrl.value)
-  if (!copied) {
-    emit('alert-message', props.trans.httpsRequired)
-    return
-  }
-
-  githubCallbackCopied.value = true
-  clearTimeout(githubCallbackCopiedTimer)
-  githubCallbackCopiedTimer = setTimeout(() => {
-    githubCallbackCopied.value = false
-  }, 1500)
-}
-
-const canBindGithub = computed(() => Boolean(
-  String(props.settings.github_client_id || '').trim() &&
-  props.settings.github_client_secret_configured
-))
 
 const emit = defineEmits([
   'toggle-password', 'toggle-admin-password-change',
   'save-settings', 'upload-bg', 'upload-bg-mobile', 'upload-favicon',
-  'send-test-notification', 'query-d1-usage', 'bind-github-account',
+  'send-test-notification', 'query-d1-usage',
   'alert-message'
 ])
 
@@ -1493,7 +1399,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', closeResourceAlertServerDropdowns)
-  clearTimeout(githubCallbackCopiedTimer)
 })
 
 defineExpose({ validateCspField, cspErrors, validatePingNodes, pingNodeErrors, validateSmtpFields, smtpErrors })

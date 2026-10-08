@@ -1,4 +1,5 @@
 import { ref, reactive, computed } from 'vue'
+import { STORAGE } from './constants'
 
 const translations = reactive({
   en: {
@@ -105,15 +106,6 @@ const translations = reactive({
     username: 'Username',
     password: 'Password',
     login: 'Login',
-    or: 'OR',
-    loginWithGithub: 'Continue with GitHub',
-    githubOAuthNotConfigured: 'GitHub login is not fully configured',
-    githubOAuthInvalidState: 'GitHub login session expired. Please try again.',
-    githubOAuthCancelled: 'GitHub authorization was cancelled',
-    githubOAuthNotAllowed: 'This is not the GitHub account bound to this site',
-    githubOAuthNotBound: 'No GitHub account is bound yet',
-    githubBindingAuthRequired: 'Your admin session expired. Sign in with your password and bind again.',
-    githubOAuthFailed: 'GitHub login failed. Please try again.',
     missingCredentials: 'Please enter username and password',
     invalidCredentials: 'Invalid username or password',
     adminPanel: 'Admin Panel',
@@ -398,22 +390,6 @@ const translations = reactive({
     jwtSecretMinLength: 'JWT Secret must be at least 32 characters long',
     jwtSecretNoWhitespace: 'JWT Secret should not contain whitespace',
     adminLoginSettings: 'Admin Login Settings',
-    enableGithubOAuth: 'Enable GitHub Login',
-    githubOAuthTip: 'After saving the OAuth App credentials, bind the current GitHub account while signed in as administrator.',
-    githubClientId: 'GitHub Client ID',
-    githubClientIdPlaceholder: 'OAuth App Client ID',
-    githubClientSecret: 'GitHub Client Secret',
-    githubBoundAccount: 'Bound GitHub Account',
-    githubNotBound: 'Not bound',
-    bindGithubAccount: 'Bind GitHub Account',
-    rebindGithubAccount: 'Rebind GitHub Account',
-    githubBindingTip: 'GitHub authorization will bind the signed-in account by its immutable numeric ID.',
-    githubSaveBeforeBinding: 'Save the Client ID and Client Secret before binding.',
-    githubBindingSuccess: 'GitHub account bound successfully',
-    githubCallbackUrl: 'Authorization callback URL',
-    githubCallbackUrlTip: 'Copy this exact URL into the GitHub OAuth App callback URL field.',
-    githubClientIdRequired: 'GitHub Client ID is required',
-    githubClientSecretRequired: 'GitHub Client Secret is required',
     usernamePlaceholder: 'admin',
     changePassword: 'Change Password',
     cancelPasswordChange: 'Cancel Password Change',
@@ -666,15 +642,6 @@ const translations = reactive({
     username: '用户名',
     password: '密码',
     login: '登录',
-    or: '或',
-    loginWithGithub: '使用 GitHub 登录',
-    githubOAuthNotConfigured: 'GitHub 登录配置不完整',
-    githubOAuthInvalidState: 'GitHub 登录会话已过期，请重试',
-    githubOAuthCancelled: '已取消 GitHub 授权',
-    githubOAuthNotAllowed: '当前账号不是本站已绑定的 GitHub 账号',
-    githubOAuthNotBound: '尚未绑定 GitHub 账号',
-    githubBindingAuthRequired: '管理员会话已过期，请先使用密码登录后重新绑定',
-    githubOAuthFailed: 'GitHub 登录失败，请重试',
     missingCredentials: '请输入用户名和密码',
     invalidCredentials: '用户名或密码错误',
     adminPanel: '管理面板',
@@ -958,22 +925,6 @@ const translations = reactive({
     jwtSecretMinLength: 'JWT Secret至少需要32个字符',
     jwtSecretNoWhitespace: 'JWT Secret不应包含空格',
     adminLoginSettings: '管理员登录设置',
-    enableGithubOAuth: '启用 GitHub 登录',
-    githubOAuthTip: '保存 OAuth App 配置后，由已登录管理员绑定当前 GitHub 账号。',
-    githubClientId: 'GitHub Client ID',
-    githubClientIdPlaceholder: 'OAuth App Client ID',
-    githubClientSecret: 'GitHub Client Secret',
-    githubBoundAccount: '已绑定 GitHub 账号',
-    githubNotBound: '尚未绑定',
-    bindGithubAccount: '绑定 GitHub 账号',
-    rebindGithubAccount: '重新绑定',
-    githubBindingTip: '授权后将按不可变的 GitHub 数字 ID 绑定当前账号。',
-    githubSaveBeforeBinding: '请先保存 Client ID 和 Client Secret，再进行绑定。',
-    githubBindingSuccess: 'GitHub 账号绑定成功',
-    githubCallbackUrl: 'Authorization callback URL',
-    githubCallbackUrlTip: '请将此完整地址复制到 GitHub OAuth App 的回调地址中。',
-    githubClientIdRequired: 'GitHub Client ID 不能为空',
-    githubClientSecretRequired: 'GitHub Client Secret 不能为空',
     usernamePlaceholder: 'admin',
     changePassword: '修改密码',
     cancelPasswordChange: '取消修改密码',
@@ -1122,7 +1073,7 @@ const translations = reactive({
   }
 })
 
-const LANGUAGE_STORAGE_KEY = 'language_preference'
+const LANGUAGE_STORAGE_KEY = STORAGE.LANGUAGE_PREFERENCE
 let defaultLanguage = 'auto'
 
 export const normalizeLanguagePreference = (lang, fallback = 'auto') => {
@@ -1183,17 +1134,9 @@ export const applyDefaultLanguage = (lang) => {
   window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang: resolvedLang } }))
 }
 
-export const toggleLanguage = () => {
-  const newLang = currentLang.value === 'en' ? 'zh' : 'en'
-  setLanguage(newLang)
-  return newLang
-}
-
 export { currentLang, translations }
 
 export const useTranslation = () => {
   const trans = computed(() => translations[currentLang.value] || translations.en)
   return trans
 }
-
-export default { t, setLanguage, getLanguage, applyDefaultLanguage, toggleLanguage, currentLang, translations, useTranslation }
