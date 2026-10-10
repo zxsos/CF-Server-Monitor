@@ -10,7 +10,7 @@ A lightweight multi-server monitoring dashboard built on Cloudflare Workers, D1,
   <a href="README-en.md">English</a>
 </p>
 
-[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Beta9-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
+[![Workers](https://img.shields.io/badge/Workers-2.8.6%20Stable-f38020?style=flat-square&logo=cloudflare&logoColor=white)](version.json)
 [![GitHub Stars](https://img.shields.io/github/stars/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/huilang-me/CF-Server-Monitor?style=flat-square&logo=github)](https://github.com/huilang-me/CF-Server-Monitor/forks)
 [![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](#license)
@@ -628,6 +628,11 @@ If the image URL redirects or goes through a CDN redirect, open the browser deve
 
 Open the Cloudflare D1 database `server-monitor-db`, edit the `setting` table, and update the `password` field in `site_options`. The legacy MD5-compatible value `e10adc3949ba59abbe56e057f20f883e` maps to password `123456`. Log in with it and set a strong password in the admin panel.
 
+
+### Domains not hosted on Cloudflare cannot be bound
+
+You can implement reverse proxying by deploying the [CFSM-PROXY](https://github.com/huilang-me/CFSM-PROXY) Pages project, allowing you to bind domains that are not hosted on Cloudflare.
+
 ### Servers in mainland China cannot report
 
 Binding a custom probe domain to the Worker is recommended. If needed, you can temporarily map the probe domain to a reachable Cloudflare CDN IP in hosts:
@@ -635,6 +640,8 @@ Binding a custom probe domain to the Worker is recommended. If needed, you can t
 ```bash
 echo <CF_CDN_IP> <your-probe-domain> | sudo tee -a /etc/hosts
 ```
+
+If you are using [CFSM-PROXY](https://github.com/huilang-me/CFSM-PROXY), please manually change the `url` parameter in the installation command to the bound domain.
 
 ### Ping values are abnormal or always 1
 

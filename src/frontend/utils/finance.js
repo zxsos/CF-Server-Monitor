@@ -226,18 +226,21 @@ export function calculateFinanceSummary(servers, exchangeRates = DEFAULT_EXCHANG
     if (priceCNY <= 0) continue
 
     summary.configuredCount++
-    summary.totalValueCNY += priceCNY
     summary.monthlyAverageCostCNY += calculateMonthlyAverageCostCNY(server, priceCNY)
 
     const expireDate = String(server?.expire_date || server?.expired_at || '').trim()
     if (!expireDate) {
       summary.missingExpireCount++
+      // 无到期日无法按剩余时长折算，退化为按单个计费周期计价
+      summary.totalValueCNY += priceCNY
       continue
     }
 
-    const remainingValue = calculateRemainingValueCNY(server, priceCNY, now)
-    if (remainingValue <= 0) summary.expiredCount++
-    summary.remainingValueCNY += remainingValue
+    // 按实际剩余可用时长折算：单价 × (剩余时长 / 计费周期)，总价值与剩余价值同口径
+    const termValue = calculateRemainingValueCNY(server, priceCNY, now)
+    summary.totalValueCNY += termValue
+    if (termValue <= 0) summary.expiredCount++
+    summary.remainingValueCNY += termValue
   }
 
   return summary
@@ -259,7 +262,7 @@ function calculateRemainingValueCNY(server, priceCNY, now = Date.now()) {
   const billingCycleMs = getBillingCycleDays(server) * MS_PER_DAY
   if (billingCycleMs <= 0) return priceCNY
 
-  return Math.min(priceCNY, priceCNY * (diffMs / billingCycleMs))
+  return priceCNY * (diffMs / billingCycleMs)
 }
 
 function calculateMonthlyAverageCostCNY(server, priceCNY) {
