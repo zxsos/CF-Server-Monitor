@@ -69,6 +69,11 @@
     padding: 0;
 }
 
+::placeholder {
+    color: var(--text-muted);
+    opacity: .5;
+}
+
 body {
     font-family: var(--terminal-font);
     background: var(--bg-primary);
@@ -2076,10 +2081,6 @@ body::before {
     box-shadow: 0 0 0 2px rgba(57, 210, 192, 0.1);
 }
 
-.toolbar-input::placeholder {
-    color: var(--text-muted);
-}
-
 .toolbar-select-wrapper {
     position: relative;
     display: inline-flex;
@@ -2111,10 +2112,6 @@ body::before {
     outline: none;
     border-color: var(--accent-cyan);
     box-shadow: 0 0 0 2px rgba(57, 210, 192, 0.1);
-}
-
-.toolbar-select::placeholder {
-    color: var(--text-muted);
 }
 
 .toolbar-custom-input {
@@ -2740,11 +2737,6 @@ body::before {
 .form-textarea.input-invalid:focus {
     border-color: var(--accent-red);
     box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.12);
-}
-
-.form-input::placeholder,
-.form-textarea::placeholder {
-    color: var(--text-muted);
 }
 
 .secret-input-masked {
@@ -3808,10 +3800,6 @@ body.server-row-drag-active * {
     color: var(--text-primary);
     font-family: var(--terminal-font);
     font-size: 13px;
-}
-
-.login-input::placeholder {
-    color: var(--text-muted);
 }
 
 .login-error {

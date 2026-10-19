@@ -147,8 +147,11 @@
           </select>
         </div>
         <div class="form-group flex-1">
-          <label class="form-label">{{ trans.networkInterface }}</label>
-          <input type="text" name="edit_interface" autocomplete="off" v-model.trim="editForm.interface" class="form-input" :placeholder="trans.networkInterfacePlaceholder">
+          <label class="form-label">
+            {{ trans.networkInterface }}
+            <HelpTooltip :text="trans.networkInterfaceHint" />
+          </label>
+          <input type="text" name="edit_interface" autocomplete="off" v-model.trim="editForm.interface" class="form-input" placeholder="eth0">
         </div>
         <div class="form-group flex-1">
           <label class="form-label">

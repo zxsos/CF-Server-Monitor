@@ -1,5 +1,5 @@
 // 当前 Worker 版本：/api/config 返回给前端与主题，用于页脚和升级提示。
-export const CURRENT_VERSION = '2.8.7 Beta1';
+export const CURRENT_VERSION = '2.8.7 Beta2';
 
 // 站点设置默认值与缓存策略。
 export const DEFAULT_SITE_TITLE = 'Cloudflare Server Monitor';
@@ -24,6 +24,10 @@ export const LATEST_REPORT_CACHE_MAX_SERVERS = 1000;
 export const UPDATE_REALTIME_BATCH_WINDOW_MS = 5 * 1000;
 export const UPDATE_RESOURCE_ALERT_BATCH_WINDOW_MS = 25 * 1000;
 export const UPDATE_MAX_BATCH_SAMPLES = 300;
+
+// /update 请求体上限：正常 300 样本约 60KB，512KB 留足余量。
+// 超过上限在 JSON 解析前直接拒绝，避免超大 payload 打满 Worker CPU。
+export const UPDATE_MAX_REQUEST_BYTES = 512 * 1024;
 export const UPDATE_FRONTEND_SUBSCRIBER_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 // Agent WSS 上报策略：默认历史写入间隔、服务器配置缓存，以及无前端订阅时的最小上报间隔。

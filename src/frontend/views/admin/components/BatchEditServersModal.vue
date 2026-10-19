@@ -113,7 +113,7 @@
             </select>
           </BatchEditField>
           <BatchEditField :enabled="enabled.interface" :label="trans.networkInterface" @toggle="toggleField('interface', $event)">
-            <input type="text" v-model.trim="form.interface" class="form-input" :disabled="!enabled.interface" :placeholder="trans.networkInterfacePlaceholder">
+            <input type="text" v-model.trim="form.interface" class="form-input" :disabled="!enabled.interface" placeholder="eth0">
           </BatchEditField>
         </div>
 

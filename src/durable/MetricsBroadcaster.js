@@ -45,13 +45,15 @@ import {
   AGENT_WSS_FRONTEND_BATCH_WINDOW_MS,
   LATEST_REPORT_CACHE_MAX_SERVERS,
   LATEST_REPORT_CACHE_TTL_MS,
-  UPDATE_MAX_BATCH_SAMPLES
+  UPDATE_MAX_BATCH_SAMPLES,
+  UPDATE_MAX_REQUEST_BYTES
 } from '../utils/config.js';
 
 const MAX_SUBSCRIBE_IDS = 500;
 const MAX_SERVER_ID_LENGTH = 64;
 const SERVER_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
 const WS_POLICY_VIOLATION = 1008;
+const WS_MESSAGE_TOO_BIG = 1009;
 const WS_TRY_AGAIN_LATER = 1013;
 const AGENT_REPORT_KIND = 'agent-report';
 const AGENT_WSS_MODE_HEADER = 'X-Agent-Wss-Mode';
@@ -704,12 +706,27 @@ export class MetricsBroadcaster {
       }
     }
 
-    let serverDetail = attachment.authenticated && attachment.historyPartitionId
-      ? { id: serverId, history_partition_id: attachment.historyPartitionId }
-      : await this._getAgentServerDetail(serverId);
+    // 不永久信任附件：每次上报都走 120s 缓存复核，服务器删除后最多 120s 内自动断开。
+    let serverDetail;
+    try {
+      serverDetail = await this._getAgentServerDetail(serverId);
+    } catch (e) {
+      // 查询异常不等于服务器被删除：已认证会话用附件续期，绝不因为 D1 抖动踢掉健康连接。
+      // 未认证会话无法续期，用 503 + 1013 让 Agent 稍后重试。
+      console.warn('[update-ws] Server detail lookup failed:', e?.message || e);
+      if (attachment.authenticated && attachment.historyPartitionId) {
+        serverDetail = { id: serverId, history_partition_id: attachment.historyPartitionId };
+      } else {
+        this._closeWsWithError(ws, 'Service unavailable', 503, { text: 'service_unavailable' }, WS_TRY_AGAIN_LATER, 'Service unavailable');
+        return null;
+      }
+    }
 
     if (!serverDetail) {
-      this._closeWsWithError(ws, 'Server not found', 404);
+      this.agentServerDetails.delete(serverId);
+      this.agentHistoryWrites.delete(serverId);
+      this.latestReportUpdates.delete(serverId);
+      this._closeWsWithError(ws, 'Server not found', 404, { text: 'server_not_found' });
       return null;
     }
 
@@ -1308,6 +1325,16 @@ export class MetricsBroadcaster {
   }
 
   async _handleAgentReportMessage(ws, rawMessage, attachment = {}) {
+    // 帧尺寸守卫必须在 decode/JSON.parse 之前：超大帧先复制再解析会白烧 DO 的 CPU 配额。
+    const rawSize = typeof rawMessage === 'string'
+      ? rawMessage.length
+      : (rawMessage?.byteLength ?? rawMessage?.buffer?.byteLength ?? 0);
+    if (rawSize > UPDATE_MAX_REQUEST_BYTES) {
+      // 当前 Agent 单帧约 60KB，此路径只对异常客户端生效。
+      this._closeWsWithError(ws, 'Payload too large', 413, { text: 'payload_too_large' }, WS_MESSAGE_TOO_BIG, 'Payload too large');
+      return;
+    }
+
     let msg = null;
     try {
       msg = JSON.parse(this._decodeWsMessage(rawMessage) || '{}');
@@ -2074,7 +2101,13 @@ export class MetricsBroadcaster {
   async webSocketMessage(ws, message) {
     const attachment = ws.deserializeAttachment() || {};
     if (attachment.kind === AGENT_REPORT_KIND) {
-      await this._handleAgentReportMessage(ws, message, attachment);
+      // 与标准 WebSocket 路径保持一致：未捕获异常会直接抛给 DO runtime，可能重置整个对象。
+      try {
+        await this._handleAgentReportMessage(ws, message, attachment);
+      } catch (error) {
+        console.warn('[update-ws] Agent hibernation message failed:', error?.message || error);
+        this._closeWsWithError(ws, 'Internal error', 500);
+      }
       return;
     }
     // 保留处理扩展消息的入口

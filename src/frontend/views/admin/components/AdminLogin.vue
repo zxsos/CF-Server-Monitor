@@ -26,7 +26,7 @@
         <div class="login-form-group last">
           <label class="login-label">{{ trans.password }}</label>
           <div class="password-input-wrapper">
-            <input :type="passwordVisible.login ? 'text' : 'password'" name="password" autocomplete="current-password" v-model="loginForm.password" required class="login-input" placeholder="••••••••">
+            <input :type="passwordVisible.login ? 'text' : 'password'" name="password" autocomplete="current-password" v-model="loginForm.password" required class="login-input">
             <button type="button" class="password-toggle" @click="$emit('toggle-password', 'login')">
               {{ passwordVisible.login ? '🙈' : '👁️' }}
             </button>

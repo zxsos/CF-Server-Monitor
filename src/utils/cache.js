@@ -103,10 +103,22 @@ export async function getServerDetail(db, id, includeHidden = false) {
     serverDetailCache.delete(id);
   }
   
-  const server = await db.prepare('SELECT * FROM servers WHERE id = ?').bind(id).first();
+  let server;
+  let degraded = false;
+  try {
+    server = await db.prepare('SELECT * FROM servers WHERE id = ?').bind(id).first();
+  } catch (e) {
+    // 与 getAllServers 一致：D1 异常时回退上一次已知结果，不把基础设施抖动放大成业务失败。
+    if (!cached) throw e;
+    debug('服务器详情查询失败，回退缓存值:', e);
+    server = cached.data;
+    degraded = true;
+  }
 
-  serverDetailCache.set(id, { data: server, time: now });
-  debug('服务器详情缓存更新');
+  if (!degraded) {
+    serverDetailCache.set(id, { data: server, time: now });
+    debug('服务器详情缓存更新');
+  }
   
   if (!server) {
     return null;

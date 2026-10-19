@@ -5,6 +5,7 @@ import { getHistoryMetrics, handleUpdateWebSocketUpgrade, handleWebSocketUpgrade
 import { buildAuthCookie, generateToken } from '../src/middleware/auth.js';
 import { buildResourceAlertNotificationPayloads } from '../src/services/notification.js';
 import { clearSiteSettingsCache, DEFAULT_NOTIFICATION_TEMPLATE, normalizeNotificationTemplate, normalizeResourceAlertRules } from '../src/utils/settings.js';
+import { UPDATE_MAX_REQUEST_BYTES } from '../src/utils/config.js';
 
 globalThis.WebSocketRequestResponsePair = class WebSocketRequestResponsePair {
   constructor(request, response) {
@@ -409,6 +410,15 @@ test('frontend realtime hint pushes active interval to connected agents', async 
 
 test('WSS agent context uses current report interval from payload', async () => {
   const broadcaster = makeBroadcaster();
+  broadcaster.agentServerDetails.set('server-1', {
+    data: {
+      id: 'server-1',
+      history_partition_id: 42,
+      report_interval: 60,
+      wss_report_interval: 2
+    },
+    time: Date.now()
+  });
   let serialized = null;
   const context = await broadcaster._resolveAgentContext({
     serializeAttachment(value) {
@@ -431,6 +441,157 @@ test('WSS agent context uses current report interval from payload', async () => 
   assert.equal(context.wssReportIntervalMs, 2000);
   assert.equal(serialized.reportIntervalMs, 120000);
   assert.equal(serialized.wssReportIntervalMs, 2000);
+});
+
+test('WSS agent context keeps an authenticated session when server lookup throws', async () => {
+  const closed = [];
+  const broadcaster = makeBroadcaster([], {
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            throw new Error('D1_ERROR');
+          }
+        };
+      }
+    }
+  });
+  let serialized = null;
+
+  const context = await broadcaster._resolveAgentContext({
+    serializeAttachment(value) {
+      serialized = value;
+    },
+    send() {},
+    close(code, reason) {
+      closed.push({ code, reason });
+    }
+  }, {
+    kind: 'agent-report',
+    authenticated: true,
+    serverId: 'degraded-server',
+    historyPartitionId: 12
+  }, {
+    id: 'degraded-server'
+  });
+
+  assert.ok(context);
+  assert.equal(context.historyPartitionId, 12);
+  assert.equal(serialized.historyPartitionId, 12);
+  assert.equal(closed.length, 0);
+});
+
+test('WSS agent context asks the agent to retry when lookup throws before auth', async () => {
+  const sent = [];
+  const closed = [];
+  const broadcaster = makeBroadcaster([], {
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            throw new Error('D1_ERROR');
+          }
+        };
+      }
+    }
+  });
+
+  const context = await broadcaster._resolveAgentContext({
+    serializeAttachment() {},
+    send(message) {
+      sent.push(JSON.parse(message));
+    },
+    close(code, reason) {
+      closed.push({ code, reason });
+    }
+  }, {
+    kind: 'agent-report',
+    authenticated: false,
+    serverId: ''
+  }, {
+    id: 'degraded-server-2'
+  });
+
+  assert.equal(context, null);
+  assert.equal(sent[0].code, 503);
+  assert.equal(closed[0].code, 1013);
+});
+
+test('WSS agent report rejects oversized frames before parsing', async () => {
+  const sent = [];
+  const closed = [];
+  const broadcaster = makeBroadcaster();
+
+  await broadcaster._handleAgentReportMessage({
+    send(message) {
+      sent.push(JSON.parse(message));
+    },
+    close(code, reason) {
+      closed.push({ code, reason });
+    }
+  }, 'x'.repeat(UPDATE_MAX_REQUEST_BYTES + 1), {});
+
+  assert.equal(sent[0].code, 413);
+  assert.equal(sent[0].text, 'payload_too_large');
+  assert.equal(closed[0].code, 1009);
+});
+
+test('WSS agent context closes and clears caches when server no longer exists', async () => {
+  const sent = [];
+  const closed = [];
+  const broadcaster = makeBroadcaster([], {
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return this;
+          },
+          async first() {
+            return null;
+          }
+        };
+      }
+    }
+  });
+  broadcaster.agentServerDetails.set('deleted-server-test', {
+    data: { id: 'deleted-server-test' },
+    time: Date.now() - 121 * 1000
+  });
+  broadcaster.agentHistoryWrites.set('deleted-server-test', {});
+  broadcaster.latestReportUpdates.set('deleted-server-test', {});
+
+  const context = await broadcaster._resolveAgentContext({
+    serializeAttachment() {
+      throw new Error('attachment should not be serialized for a deleted server');
+    },
+    send(message) {
+      sent.push(JSON.parse(message));
+    },
+    close(code, reason) {
+      closed.push({ code, reason });
+    }
+  }, {
+    kind: 'agent-report',
+    authenticated: true,
+    serverId: 'deleted-server-test'
+  }, {
+    id: 'deleted-server-test'
+  });
+
+  assert.equal(context, null);
+  assert.equal(sent[0].type, 'error');
+  assert.equal(sent[0].code, 404);
+  assert.equal(sent[0].text, 'server_not_found');
+  assert.equal(closed[0].code, 1008);
+  assert.equal(broadcaster.agentServerDetails.has('deleted-server-test'), false);
+  assert.equal(broadcaster.agentHistoryWrites.has('deleted-server-test'), false);
+  assert.equal(broadcaster.latestReportUpdates.has('deleted-server-test'), false);
 });
 
 test('WSS agent config ack is skipped when report omits config state', async () => {
